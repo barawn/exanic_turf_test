@@ -39,5 +39,19 @@ isn't important if multiple requests aren't fired off before reading the acknowl
 # Event path
 
 The event path consists of 3 "incoming" ports, 'Tc', 'Ta', 'Tn', and a range of 1024 "outgoing" ports, from 0x4100 to 0x44FF.
-When the event path is opened by sending an open command to 'Tc', events are sent out (in programmable MTU sizes) from
-incrementing source ports until an event is complete.
+When the event path is opened by sending an open command to 'Tc', event fragments are sent out (after being set up, see below, and
+in programmable MTU sizes) from incrementing source ports until an event is complete.
+
+Event fragments consist of a single 32-bit header, consisting of a 12-bit tag (bits 31-20) and a 20-bit length (bits 19-0) allowing
+for full event sizes up to 1 MB, followed by the fragment data (up to the MTU size). The source UDP port indicates the position of
+the fragment in the event.
+
+Once an event is complete and received correctly, an acknowledgement must be sent to the 'Ta' port, consisting of the 12-bit tag
+(in bits 31-20, as before). If an event is *not* received correctly, the 12-bit tag plus length should be sent to the 'Tn' port,
+which will retransmit the event. Note that if *none* of the fragments for an event are received, then the tag can be sent with
+the maximum event size to read out the event (although extraneous data will be transmitted past the end). Since most events will
+consist of many fragments, this is unlikely.
+
+Once an open command is sent to 'Tc', the event path must be prepared before data is sent. To do this, tags must be sent to the
+'Ta' port to "prime the pump." The tags to be sent depend on the implementation (specifically the total memory size). For instance,
+if 256 MB is available for event buffering, then 256 tags must be sent to the 'Ta' port after opening.
