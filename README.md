@@ -42,10 +42,10 @@ The event path consists of 3 "incoming" ports, 'Tc', 'Ta', 'Tn', and an outgoing
 When the event path is opened by sending an open command to 'Tc', event fragments are sent out (after being set up, see below, and
 in programmable MTU sizes) from the 'Te' port to the destination port specified by the open command.
 
-Event fragments consist of a single 64-bit header, consisting of a 32-bit constant identifier, a 12-bit tag (bits 31-20) and a 
-20-bit length (bits 19-0) allowing for full event sizes up to 1 MB, followed by the fragment data (up to the MTU size). 
-The source UDP port indicates the position of the fragment in the event. The reason for making the header 64-bits is just that
-the UDP datapath is 64 bits overall. 
+Event fragments consist of a single 64-bit header, consisting of a 20-bit constant identifier, a 10-bit incrementing fragment number, 
+a 12-bit tag (bits 31-20) and a 20-bit length (bits 19-0) allowing for full event sizes up to 1 MB, followed by the 
+fragment data (up to the MTU size). The source UDP port indicates the position of the fragment in the event. The reason for 
+making the header 64-bits is just that the UDP datapath is 64 bits overall. 
 
 Once an event is complete and received correctly, an acknowledgement must be sent to the 'Ta' port, consisting of the 12-bit tag
 (in bits 31-20, as before). If an event is *not* received correctly, the 12-bit tag plus length should be sent to the 'Tn' port,
