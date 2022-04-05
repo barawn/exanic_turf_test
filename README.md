@@ -94,9 +94,10 @@ The event path consists of 3 "incoming" ports, 'Tc', 'Ta', 'Tn', and an outgoing
 When the event path is opened by sending an open command to 'Tc', event fragments are sent out (after being set up, see below, and
 in programmable MTU sizes) from the 'Te' port to the destination port specified by the open command.
 
-Event fragments consist of a single 64-bit header, consisting of a 22-bit constant identifier, a 10-bit incrementing fragment number, 
-a 12-bit tag (bits 31-20) and a 20-bit length (bits 19-0) allowing for full event sizes up to 1 MB, followed by the 
-fragment data (up to the MTU size). The reason for making the header 64-bits is just that the UDP datapath is 64 bits overall. 
+Event fragments consist of a single 64-bit header, consisting of a 22-bit constant identifier (with the top bit **always** set), 
+a 10-bit incrementing fragment number, a 12-bit tag (bits 31-20) and a 20-bit length (bits 19-0) allowing for full event sizes 
+up to 1 MB, followed by the fragment data (up to the MTU size). The reason for making the header 64-bits is just that the 
+UDP datapath is 64 bits overall. 
 
 A union/bitfield representation of the header would be
 ```
@@ -120,7 +121,8 @@ and used to form it. However a portion of the 'fragment' field is repurposed as 
 ```
 typedef union {
   struct {
-     uint64_t unused0:24;
+     uint64_t allow:1;
+     uint64_t unused0:23;
      uint64_t tag:8;
      uint64_t addr:12;
      uint64_t unused1:20;
@@ -140,15 +142,20 @@ typedef union {
 ```
 
 The 'unused' fields here are completely unused and can be left as they were from the turf_fragment_t. That is, a turf_ack_t/nack_t
-can be filled from a turf_fragment_t directly.
+can be filled from a turf_fragment_t directly. 
+
+The 'allow' field in the 'ack' indicates that another event is allowed to stream.
+Note that because the constant identifier always has the top bit set (and the exact value of 'tag' isn't important for 'Ta') during
+normal operation the turf_fragment_t header from any frame can just be sent directly to the 'Ta' port and it will work.
 
 Note that if *none* of the fragments for an event are received, then the tag can be sent with the maximum event size to read out
 the event (although extraneous data will be transmitted past the end).  Since most events will consist of many fragments, this is unlikely.
 
 Once an open command is sent to 'Tc', the event path must be prepared before data is sent. To do this, tags must be sent to the
 'Ta' port to "prime the pump." The tags to be sent depend on the implementation (specifically the total memory size). For instance,
-if 256 MB is available for event buffering, then 256 tags must be sent to the 'Ta' port after opening. The ident/fragment/total fields
-in the turf_fragment_header_t are all ignored by the 'Ta'/'Tn' port.
+if 256 MB is available for event buffering, then 256 tags must be sent to the 'Ta' port after opening. In this initialization, the "allow"
+field should be **zero** for every tag except the number of events you want to allow in flight at one time (see the "Limiting number of
+events in flight" section).
 
 ### Lost confirmation protection
 
@@ -164,16 +171,20 @@ the *next* rerequest fails, the tag ensures that the lost confirmation protectio
 
 Therefore, the tag should be incremented after the confirmation is received.
 
+Note that if multiple addresses are sent to the 'Ta' port in a packet, the confirmation contains only the address/tag of the first. Multiple addresses
+sent to the 'Tn' port will be ignored (past the first).
+
 ### Example
 
 An example of the event process would look something like this.
 
 ```
+(initialization section ignored)
 TURF 'Te' sends to fragment_in: frag 0 addr 0 len 446464 <8096 bytes of data>
 TURF 'Te' sends to fragment_in: frag 1 addr 0 len 446464 <8096 bytes of data>
 (repeat above 53 times)
 TURF 'Te' sends to fragment_in: frag 55 addr 0 len 446464 <1184 bytes of data>
-SFC fragcontrol_in sends to 'Ta': tag 0 addr 0
+SFC fragcontrol_in sends to 'Ta': allow 1 tag 0 addr 0
 TURF 'Ta' sends to fragcontrol_in: tag 0 addr 0
 ```
 
@@ -182,6 +193,70 @@ repeat the process. And if the confirmation was lost, the SFC would again send t
 
 In addition, the next event receive attempt should end with "tag 1 addr X".
 
+### Limiting number of events in flight
+
+If we allowed unlimited events to be being built and sent, a problem would arise in that the process building events could find it
+difficult to determine that an event is *lost* because multiple events would be coming in while it was waiting for the retransmission.
+Those new incoming events also would have to wait for their acknowledgements to be sent out, otherwise the "address" ordering
+would break (events must be acknowledged with the "addr" ordering that's desired for the readout).
+
+To avoid this (the "firehose from hell" problem), no *new* events will stream out until an ack with "initial" set to 0 is sent to the 'Ta'
+port (and once one event streams out, it will wait for the next 'Ta' ack, etc.).
+
+This allows for software to set up in a mode where only *one* event is read out at a time, controlling the event flow. 
+
+### Single event at a time
+
+This example shows only 4 addresses filled (for brevity).
+
+```
+SFC fragcontrol_in sends to 'Ta': 
+  tag 0 addr 0 allow 0
+  tag 0 addr 1 allow 0
+  tag 0 addr 2 allow 0
+  tag 0 addr 3 allow 1
+TURF 'Ta' sends to fragcontrol_in: tag 0 addr 0
+  (SFC internally increments 'tag' because an ack was completed)
+TURF 'Te' sends to fragment_in: frag 0 addr 0 len 446464 <8096 bytes of data>
+(+remaining fragments)
+```
+At this point, the TURF *stops* sending data because it was allowed to send 1 event and it has sent one event. When the event builds at the
+SFC, we have:
+```
+SFC fragcontrol_in sends to 'Ta': tag 1 addr 0 allow 1
+TURF 'Ta' sends to fragcontrol_in: tag 1 addr 0
+  (SFC internally increments 'tag' because an ack was completed)
+(next event begins streaming)
+```
+
+### 2 events at a time (max)
+
+This example shows only 4 addresses filled (for brevity).
+
+```
+SFC fragcontrol_in sends to 'Ta': 
+  tag 0 addr 0 allow 0
+  tag 0 addr 1 allow 0
+  tag 0 addr 2 allow 1
+  tag 0 addr 3 allow 1
+TURF 'Ta' sends to fragcontrol_in: tag 0 addr 0
+  (SFC internally increments 'tag' because an ack was completed)
+TURF 'Te' sends to fragment_in: frag 0 addr 0 len 446464 <8096 bytes of data>
+TURF 'Te' sends to fragment_in: frag 1 addr 0 len 446464 <8096 bytes of data>
+(repeat above 53 times)
+TURF 'Te' sends to fragment_in: frag 55 addr 0 len 446464 <1184 bytes of data>
+(TURF continues to send data since 2 allowed, 1 sent)
+TURF 'Te' sends to fragment_in: frag 0 addr 1 len 446464 <8096 bytes of data>
+SFC fragcontrol_in sends to 'Ta': tag 1 addr 0 allow 1
+TURF 'Ta' sends to fragcontrol_in: tag 1 addr 0
+  (SFC internally increments 'tag' because an ack was completed)
+  (TURF is now allowed to send 3, and 1 sent)
+```
+
+Note that TURF naks *always* are allowed, so in this mode if an event is missed, the event builder can
+simply wait until the number of events allowed in flight have been collected (empty the pipeline), issue the
+nack to get the missed event again, and then send the required acknowledges to restart the flow.
+
 ### Efficiency
 
 Ideally the MTU will be set to a large value (8 plus a power of 2 would be smart as well, e.g. 8104) to reduce the packet overhead.
@@ -189,13 +264,3 @@ In this case the overall efficiency would be well greater than 99%. Note that if
 multiple of 8 will be used - for example, if 1500 is set, only 1496 bytes will be sent, for an overall efficiency of 96.5%.
 
 Note that this requires setting the network adapter on the host side to receive jumbo frames (9018 bytes).
-
-Also note that events do *not* need to be acknowledged for the next packet to be received. This allows a single process to
-receive large numbers of frames without building them into events, and a separate process to take those frames and more slowly
-build them into events (and acknowledge them) to avoid packet loss. This becomes complicated if the possibility of completely lost
-events exists (which, as noted before, is extremely unlikely).
-
-Obviously the ack/nack process reduces the efficiency somewhat, however since those only occur at the event level, the effect
-is completely negligible.
-
-This process does become much more complicated if packet loss is extremely high, however this will hopefully not be an issue.
