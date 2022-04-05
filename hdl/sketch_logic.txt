@@ -1,0 +1,20 @@
+# Sketch logic for TURF test
+
+We need to merge 4x incoming AXI4-Stream frames into a single frame. This
+we already have from existing HELIX stuff, but it's basically a switch with
+s_req_suppress logic.
+
+Those go into a DataMover input. The DataMover's control input come from the Ta
+port. The status output goes to a switch which feeds the DataMover's control input
+along with the Tn input on a second switch input. The output of that DataMover
+goes into custom UDP stream logic.
+
+We need to capture the input of the second DataMover's control input (which
+contains the length) to start the UDP stream: so you feed that switch output
+into a broadcaster. The UDP logic moves through IDLE, HEADER, TAG, and STREAM
+states. IDLE is the only time that it accepts the control input, at which
+point it moves to HEADER. The HEADER presents the port and length, then in the
+TAG state the first data (64-bit tag) is presented. Then the STREAM state
+accepts data up to the programmable MTU length or TLAST, at which point 
+it jumps back to the HEADER state.
+
