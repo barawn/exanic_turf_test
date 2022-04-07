@@ -1,3 +1,6 @@
 [submodule "submodules/verilog-ethernet"]
 	path = submodules/verilog-ethernet
 	url = https://github.com/alexforencich/verilog-ethernet
+[submodule "submodules/verilog-library-barawn"]
+	path = submodules/verilog-library-barawn
+	url = https://github.com/barawn/verilog-library-barawn
