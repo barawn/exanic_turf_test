@@ -1,9 +1,15 @@
 `timescale 1ns / 1ps
 `include "interfaces.vh"
+// UDP fragment generator. This takes a tagged input stream
+// and breaks it up into a number of UDP fragments of programmable
+// size. You pass the tag and length (in bytes) into the control
+// stream, and then the data through the s_data_ port.
+// The tag and length are present in the first 8 bytes along
+// with a constant and the fragment number.
 module turf_fragment_gen(
         input aclk,
         input aresetn,
-        // Payload uint64_ts in a fragment, minus 1.
+        // Payload uint64_ts in a fragment.
         input [9:0] nfragment_count_i,
         
         // control interface
@@ -52,6 +58,11 @@ module turf_fragment_gen(
 
     wire [19:0] current_length_remaining = (state == IDLE) ? 
         s_ctrl_tdata[0 +: 20] : remaining_length;
+    // round current length remaining
+    wire [16:0] current_length_remaining64 =
+        (current_length_remaining[2:0] != 3'b000) ?
+        current_length_remaining[ 3 +: 16] + 1 :
+        current_length_remaining[ 3 +: 16];
 
     wire [63:0] tag = { CONSTANT_0, CONSTANT_1, fragment_number, address, length };
 
@@ -73,11 +84,17 @@ module turf_fragment_gen(
         // We have to do this for the first fragment and then after each new fragment
         if ((state == IDLE && s_ctrl_tvalid && s_ctrl_tready)|| 
             (state == TAG && m_payload_tvalid && m_payload_tready)) begin
-            // fits in a single fragment
-            if (current_length_remaining < {nfragment_count_i,3'b000}) begin
+            // fits in a single fragment. 
+            // If for instance nfragment_count is 8, we can accept 72 bytes
+            // so if current_length_remaining64 is 9 we need to be OK with that
+            if (current_length_remaining64 <= nfragment_count_i + 1) begin
                 // nfragment_count_i is 10 bits, so we only need to grab
-                // 13 bits here and add 8.
+                // 13 bits here and add 8, for the tag.
                 fragment_length <= current_length_remaining[0 +: 13] + 8;
+            end else begin
+                // the 16 here is tag + the extra 8 because nfragment count
+                // has a minus 1.
+                fragment_length <= {nfragment_count_i,3'b000} + 16;
             end
         end
         // Calculate the remaining length
@@ -106,4 +123,6 @@ module turf_fragment_gen(
     assign s_ctrl_tready = (state == IDLE);
     assign m_hdr_tdata = fragment_length;
     assign m_payload_tdata = (state == TAG) ? tag : s_data_tdata;
+    assign m_payload_tlast = (state == STREAM && s_data_tlast);
+    assign m_payload_tkeep = (state == STREAM) ? s_data_tkeep : 8'hFF;
 endmodule
