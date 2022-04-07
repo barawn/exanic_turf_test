@@ -347,5 +347,8 @@ core_inst (
     .sfp_2_rxc(sfp_2_rxc_int)
 );
 
+sfp_vio u_sfpvio(.clk(clk_156mhz_int),
+                 .probe_in0(sfp_1_npres),
+                 .probe_in1(sfp_2_npres));
 
 endmodule
