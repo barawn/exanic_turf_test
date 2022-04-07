@@ -4,3 +4,6 @@
 [submodule "submodules/verilog-library-barawn"]
 	path = submodules/verilog-library-barawn
 	url = https://github.com/barawn/verilog-library-barawn
+[submodule "submodules/verilog-axis"]
+	path = submodules/verilog-axis
+	url = https://github.com/alexforencich/verilog-axis
