@@ -82,6 +82,19 @@ module turf_udp_rdwr(
                        .s_axis_tlast( fifo_in_tlast ));
     
     // ok, now we state machine the thing
-    
+    localparam FSM_BITS=3;
+    // waiting for a header (we dump everything non-header in case there's some weird reset $#!+)
+    localparam [FSM_BITS-1:0] IDLE = 0;
+    // read path, from the low (first) word
+    localparam [FSM_BITS-1:0] READ_0 = 1;
+    // wait for ack
+    localparam [FSM_BITS-1:0] READ_0_ACK = 2;
+    // read path, from the high (second) word
+    localparam [FSM_BITS-1:0] READ_1 = 3;
+    // wait for ack
+    localparam [FSM_BITS-1:0] READ_1_ACK = 4;
+    // skip state, in case we're repeating
+    localparam [FSM_BITS-1:0] READ_SKIP = 5;
+    // 
         
 endmodule
