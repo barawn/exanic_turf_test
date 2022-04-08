@@ -54,7 +54,15 @@ module exanic_turf_test(
     input  wire       sfp_1_los,
     input  wire       sfp_2_los,
     output wire       sfp_1_rs,
-    output wire       sfp_2_rs
+    output wire       sfp_2_rs,
+    // PCIe
+    input [7:0] pcie_rx_p,
+    input [7:0] pcie_rx_n,
+    output [7:0] pcie_tx_p,
+    output [7:0] pcie_tx_n,
+    input pcie_refclk_p,
+    input pcie_refclk_n,
+    input pcie_reset_n    
 );
 
 // Clock and reset
