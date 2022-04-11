@@ -62,7 +62,7 @@ module exanic_turf_test(
     output [7:0] pcie_tx_n,
     input pcie_refclk_p,
     input pcie_refclk_n,
-    input pcie_reset_n    
+    input pcie_reset_n
 );
 
 // Clock and reset
@@ -354,6 +354,85 @@ core_inst (
     .sfp_2_rxd(sfp_2_rxd_int),
     .sfp_2_rxc(sfp_2_rxc_int)
 );
+
+wire interface_not_ready;
+// These are the request/response paths. They're 32 bits,
+// but they need to be 64 bits so sadly this means
+// you *have* to make sure to read/write stuff in pairs.
+// This has to be used instead of the memory-mapped
+// stuff because that interface has no way to arbitrate
+// a transaction against an interface with delayed response:
+// when you issue an addr update, there's no way to know
+// if it's a read or a write pending, and when you read
+// you *have* to provide data one cycle later. Which
+// means you *have* to execute a read every time there's
+// an address update even though there might not be
+// an actual read. Which means reads must be benign,
+// which cannot be guaranteed on an interface.
+//
+// So instead, we just mock it up with a request/response.
+
+// request path
+wire [31:0] xil_mmreq_data;
+wire        xil_mmreq_wren;
+wire        xil_mmreq_wrfull;
+wire        xil_mmreq_open;
+// response path
+wire [31:0] xil_mmresp_data;
+wire        xil_mmresp_rden;
+wire        xil_mmresp_rdempty;
+wire        xil_mmresp_open;
+wire        xil_mmresp_eof = 1'b0;
+
+// state change path
+wire [7:0]  xil_event_ctrl_data;
+wire        xil_event_ctrl_rden;
+wire        xil_event_ctrl_rdempty;
+wire        xil_event_ctrl_open;
+wire        xil_event_ctrl_eof = 1'b0;
+
+// and inbound event path
+wire [31:0] xil_event_out_data;
+wire        xil_event_out_wren;
+wire        xil_event_out_wrfull;
+wire        xil_event_out_open;
+
+// I dunno what these do.
+wire [3:0] GPIO_LED;
+
+xillybus u_xillybus(.PCIE_TX_P(pcie_tx_p),
+                    .PCIE_TX_N(pcie_tx_n),
+                    .PCIE_RX_P(pcie_rx_p),
+                    .PCIE_RX_N(pcie_rx_n),
+                    .PCIE_REFCLK_P(pcie_refclk_p),
+                    .PCIE_REFCLK_N(pcie_refclk_n),
+                    .PCIE_PERST_B_LS(pcie_resetn),
+                    .bus_clk(clk_156mhz_int),
+                    .quiesce(interface_not_ready),
+                    .GPIO_LED(GPIO_LED),
+                    // request path
+                    .user_w_mmreq_data( xil_mmreq_data ),
+                    .user_w_mmreq_wren( xil_mmreq_wren ),
+                    .user_w_mmreq_full( xil_mmreq_wrfull ),
+                    .user_w_mmreq_open( xil_mmreq_open ),
+                    // response path
+                    .user_r_mmresp_data( xil_mmresp_data ),
+                    .user_r_mmresp_rden( xil_mmresp_rden ),
+                    .user_r_mmresp_empty(xil_mmresp_rdempty ),
+                    .user_r_mmresp_eof(  xil_mmresp_eof ),
+                    .user_r_mmresp_open( xil_mmresp_open ),
+                    // state change path
+                    .user_r_event_ctrl_data( xil_event_ctrl_data ),
+                    .user_r_event_ctrl_rden( xil_event_ctrl_rden ),
+                    .user_r_event_ctrl_empty(xil_event_ctrl_rdempty ),
+                    .user_r_event_ctrl_eof(  xil_event_ctrl_eof ),
+                    .user_r_event_ctrl_open( xil_event_ctrl_open ),
+                    // inbound event path
+                    .user_w_event_out_data( xil_event_out_data ),
+                    .user_w_event_out_wren( xil_event_out_wren ),
+                    .user_w_event_out_full( xil_event_out_wrfull ),
+                    .user_w_event_out_open( xil_event_out_open ));
+                    
 
 sfp_vio u_sfpvio(.clk(clk_156mhz_int),
                  .probe_in0(sfp_1_npres),
