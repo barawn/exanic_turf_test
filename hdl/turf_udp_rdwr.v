@@ -1,4 +1,8 @@
 `timescale 1ns / 1ps
+`include "interfaces.vh"
+
+// TURF UDP port read/write.
+
 // This module handles the read/write control port.
 // We buffer the incoming data so we don't block anything.
 // tuser is used to indicate that it's a header word.
@@ -55,6 +59,9 @@ module turf_udp_rdwr(
     `DEFINE_AXI4S_MIN_IF( fifo_out_ , 64 );
     wire [3:0] fifo_out_tuser;
     wire fifo_out_tlast;
+    reg fifo_out_tready_r;
+    assign fifo_out_tready = fifo_out_tready_r;
+    
     `DEFINE_AXI4S_MIN_IF( payload_out_ , 64 );
     wire payload_out_tlast;
     
@@ -75,8 +82,8 @@ module turf_udp_rdwr(
                        .s_axis_tdata( { s_payload_tdata, s_hdr_tdata } ),
                        .s_axis_tvalid({ s_payload_tvalid, s_hdr_tvalid } ),
                        .s_axis_tready({ s_payload_tready, s_hdr_tready } ),
-                       .s_axis_tuser( { s_payload_tuser, s_hdr_tuser } ),
-                       .s_axis_tlast( { s_payload_tlast, s_hdr_tlast } ),
+                       .s_axis_tuser( { payload_tuser, hdr_tuser } ),
+                       .s_axis_tlast( { s_payload_tlast, 1'b1 } ),
                        `CONNECT_AXI4S_MIN_IF( m_axis_ , fifo_in_ ),
                        .m_axis_tuser( fifo_in_tuser ),
                        .m_axis_tlast( fifo_in_tlast ),
@@ -97,11 +104,20 @@ module turf_udp_rdwr(
     reg [63:0] read_response = {64{1'b0}};
     // This is the write response as well as the packet loss check.
     reg [31:0] write_response = {32{1'b0}};
+
     reg last_read_valid = 0;
     reg last_write_valid = 0;
 
+    reg read_path = 0;
+
     reg [15:0] response_length = {16{1'b0}};
     reg [47:0] response_ipport = {48{1'b0}};
+
+    // this just simplifies things
+    reg en_reg = 0;
+    reg [31:0] adr_tag_reg = {32{1'b0}};
+    
+    
     
     // ok, now we state machine the thing
     localparam FSM_BITS=4;
@@ -143,6 +159,15 @@ module turf_udp_rdwr(
     // tuser[2] = low 32 bits are valid
     // tuser[3] = high 32 bits are valid
     always @(posedge aclk) begin
+        if (!aresetn) last_read_valid <= 0;
+        else if (state == READ_0_CHECK && fifo_out_tvalid && fifo_out_tuser[2]) last_read_valid <= 1;
+        
+        if (!aresetn) last_write_valid <= 0;
+        else if (state == WRITE_CHECK && fifo_out_tvalid && fifo_out_tuser[3:2] == 2'b11) last_write_valid <= 1;
+    
+        if (state == IDLE && fifo_out_tvalid && fifo_out_tready && fifo_out_tuser[1])
+            read_path <= fifo_out_tuser[0];
+
         if (fifo_out_tvalid && fifo_out_tready && fifo_out_tuser[1] && state == IDLE) begin
             response_ipport <= fifo_out_tdata[16 +: 48];
         end
@@ -160,6 +185,17 @@ module turf_udp_rdwr(
         if (state == WRITE_CHECK && fifo_out_tvalid && fifo_out_tuser[3:2] == 2'b11) write_response <= fifo_out_tdata[32 +: 32];
         // READ_0_CHECK only happens on the first one. We grab the low 32-bits because it's a 32-bit object.
         if (state == READ_0_CHECK && fifo_out_tvalid && fifo_out_tuser[2]) last_read <= fifo_out_tdata[0 +: 32];
+
+        // state == READ_0_RESP should kinda have a fifo_out_tuser[3] check here...
+        // except if it's not set, we go to DUMP_CHECK_RESP and adr_tag_reg is pointless anyway.                
+        if (fifo_out_tvalid) begin
+            if (state == READ_0 || state == READ_0_CHECK) adr_tag_reg <= fifo_out_tdata[0 +: 32];
+            else if (state == WRITE_CHECK || state == WRITE || state == READ_0_RESP) adr_tag_reg <= fifo_out_tdata[32 +: 32];
+        end                
+        
+        // we super-cheat on the enable reg, we don't care about the extra clock delay
+        if (ack_i) en_reg <= 1'b0;
+        else if (state == READ_0_ACK || state == READ_1_ACK || state == WRITE_ACK) en_reg <= 1'b1;        
         
         if ((state == READ_0_ACK || state == READ_1_ACK) && ack_i) begin
             read_response[32 +: 32] <= (state == READ_0_ACK) ? fifo_out_tdata[0 +: 32] :
@@ -179,7 +215,7 @@ module turf_udp_rdwr(
                 READ_0_CHECK: if (fifo_out_tvalid) begin
                     if (fifo_out_tuser[2]) begin
                         // packet loss guard
-                        if (fifo_out_tdata[31:0] == read_response[63:32]) state <= READ_SKIP;
+                        if (fifo_out_tdata[31:0] == read_response[63:32] && last_read_valid) state <= READ_SKIP;
                         else state <= READ_0_ACK;
                     // DUMP just goes through all data until TLAST and then
                     // pushes out a response if there was any data written
@@ -224,15 +260,15 @@ module turf_udp_rdwr(
                     if (user_last) state <= RESP_HEADER;
                     else state <= READ_0;
                 end
-                // tready is set here if payload_out_tready and payload_out_tvalid
-                READ_SKIP: if (payload_out_tready && payload_out_tvalid) state <= RESP_HEADER;
+                // tready is set here if payload_out_tready
+                READ_SKIP: if (payload_out_tready) state <= RESP_HEADER;
                 // We go to DUMP_CHECK_RESP here because if there aren't enough bytes,
                 // this is the first write and no response should be given.
                 // tready is never set here
                 WRITE_CHECK: begin
                     if (fifo_out_tvalid) begin
                         if (fifo_out_tuser[3:2] == 2'b11) begin
-                            if (fifo_out_tdata[32 +: 32] == write_response) state <= WRITE_RESP;
+                            if (fifo_out_tdata[32 +: 32] == write_response && last_write_valid) state <= WRITE_RESP;
                             else state <= WRITE_ACK;
                         end else state <= DUMP_CHECK_RESP;
                     end
@@ -268,6 +304,48 @@ module turf_udp_rdwr(
             endcase
         end
     end
-        
+    // this enumerates all 16 states
+    always @(*) begin
+        case (state)
+            // IDLE consumes stream data until a header word
+            // DUMP_CHECK_RESP, DUMP_THEN_RESP consume data until tlast
+            IDLE, DUMP_CHECK_RESP, DUMP_THEN_RESP: fifo_out_tready_r <= 1;
+            // these never consume data
+            READ_0_CHECK, READ_0, READ_0_ACK, READ_0_RESP, READ_1_RESP, WRITE_CHECK, WRITE, WRITE_RESP, RESP_HEADER: fifo_out_tready_r <= 0;
+            // these consume data when the transaction completes
+            READ_1_ACK, WRITE_ACK: fifo_out_tready_r <= ack_i;
+            // this consumes data when the response has been echoed
+            READ_SKIP: fifo_out_tready_r <= payload_out_tready;
+            // this consumes data if it's not valid
+            READ_1_PEEK: fifo_out_tready_r <= fifo_out_tvalid && !fifo_out_tuser[2];
+        endcase
+    end
+
+    // outbound payload
+    assign payload_out_tlast = user_last || (state == WRITE_RESP);
+    assign payload_out_tdata[63:32] = (state == WRITE_RESP) ? write_response : read_response[63:32];
+    assign payload_out_tdata[31:0] = read_response[31:0];
+    assign payload_out_tvalid = (state == READ_0_RESP || state == READ_1_RESP || state == WRITE_RESP);
+    
+    // pass through FIFO (64 bits+tlast)
+    axis_ccfifo64_tlast u_outfifo(.s_aclk(aclk),.s_aresetn(aresetn),
+                       `CONNECT_AXI4S_MIN_IF( s_axis_ , payload_out_ ),
+                       .s_axis_tlast( payload_out_tlast ),
+                       `CONNECT_AXI4S_MIN_IF( m_axis_ , m_payload_ ),
+                       .m_axis_tlast( m_payload_tlast ));
+    // we ONLY write 8-byte chunks
+    assign m_payload_tkeep = 8'hFF;    
+
+    // outbound header
+    assign m_hdr_tvalid = (state == RESP_HEADER);
+    assign m_hdr_tdata = { response_ipport, response_length };
+    assign m_hdr_tuser[0] = read_path;
+
+    // outbound interface
+    assign en_o = en_reg;
+    assign adr_o = adr_tag_reg[0 +: 28];
+    assign wr_o = (state == WRITE_ACK);
+    // data output is always the low bits
+    assign dat_o = fifo_out_tdata[0 +: 32];
 
 endmodule
