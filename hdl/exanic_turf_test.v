@@ -1,5 +1,12 @@
 `timescale 1ns / 1ps
-// Derived from the ExaNIC X25 example for verilog-ethernet:
+// ExaNIC TURF test, PSA 4/12/22, consisting of:
+//
+// UDP interface mimicking TURF
+// Xillybus PCIe interface for mimicking DAQ event behavior
+// DDR interface storing fake events
+
+// Derived from the ExaNIC X25 example for verilog-ethernet,
+// which had the following copyright notice.
 
 /*
 
@@ -27,6 +34,7 @@ THE SOFTWARE.
 
 
 module exanic_turf_test(
+    input wire clk_10mhz,
     /*
      * GPIO
      */
@@ -55,6 +63,24 @@ module exanic_turf_test(
     input  wire       sfp_2_los,
     output wire       sfp_1_rs,
     output wire       sfp_2_rs,
+    // DDR4
+    input  clk161_ddr_p,
+    input  clk161_ddr_n,
+    output [16:0] c0_ddr4_adr,
+    output [1:0] c0_ddr4_ba,
+    output [0:0] c0_ddr4_cke,
+    output [0:0] c0_ddr4_cs_n,
+    inout [3:0] c0_ddr4_dm_dbi_n,
+    inout [31:0] c0_ddr4_dq,
+    inout [3:0] c0_ddr4_dqs_c,
+    inout [3:0] c0_ddr4_dqs_t,
+    output [0:0] c0_ddr4_odt,
+    output [1:0] c0_ddr4_bg,
+    output c0_ddr4_reset_n,
+    output c0_ddr4_act_n,
+    output [0:0] c0_ddr4_ck_c,
+    output [0:0] c0_ddr4_ck_t,
+    input ddr_npres,
     // PCIe
     input [7:0] pcie_rx_p,
     input [7:0] pcie_rx_n,
@@ -64,6 +90,10 @@ module exanic_turf_test(
     input pcie_refclk_n,
     input pcie_reset_n
 );
+
+wire init_clk;
+(* KEEP = "TRUE" *)
+BUFG u_init_clk(.I(clk_10mhz),.O(init_clk));
 
 // Clock and reset
 
@@ -355,6 +385,8 @@ core_inst (
     .sfp_2_rxc(sfp_2_rxc_int)
 );
 
+// xillybus
+wire xil_clk;
 wire interface_not_ready;
 // These are the request/response paths. They're 32 bits,
 // but they need to be 64 bits so sadly this means
@@ -400,14 +432,25 @@ wire        xil_event_out_open;
 // I dunno what these do.
 wire [3:0] GPIO_LED;
 
+// Kill the inbound paths for now
+assign xil_event_ctrl_rdempty = 1'b0;
+assign xil_event_ctrl_data = 8'h00;
+
+assign xil_mmresp_data = {32{1'b0}};
+assign xil_mmresp_rdempty = 1'b0;
+
+// and don't care the fulls
+assign xil_mmreq_wrfull = 1'b0;
+assign xil_event_out_wrfull = 1'b0;
+
 xillybus u_xillybus(.PCIE_TX_P(pcie_tx_p),
                     .PCIE_TX_N(pcie_tx_n),
                     .PCIE_RX_P(pcie_rx_p),
                     .PCIE_RX_N(pcie_rx_n),
                     .PCIE_REFCLK_P(pcie_refclk_p),
                     .PCIE_REFCLK_N(pcie_refclk_n),
-                    .PCIE_PERST_B_LS(pcie_resetn),
-                    .bus_clk(clk_156mhz_int),
+                    .PCIE_PERST_B_LS(pcie_reset_n),
+                    .bus_clk(xil_clk),
                     .quiesce(interface_not_ready),
                     .GPIO_LED(GPIO_LED),
                     // request path
@@ -432,8 +475,64 @@ xillybus u_xillybus(.PCIE_TX_P(pcie_tx_p),
                     .user_w_event_out_wren( xil_event_out_wren ),
                     .user_w_event_out_full( xil_event_out_wrfull ),
                     .user_w_event_out_open( xil_event_out_open ));
-                    
 
+// ddr4
+wire ddr_cal_ok;
+wire ddr_clk;
+wire ddr_reset_sync;
+wire ddr_reset;
+
+wire ddr_sys_clk_in;
+IBUFDS u_ddr4_ibufds(.I(clk161_ddr_p),.IB(clk161_ddr_n),.O(ddr_sys_clk_in));
+BUFG u_ddr4_bufg(.I(ddr_sys_clk_in),.O(ddr_sys_clk_g));
+
+ddr4_0 u_ddr4( .c0_sys_clk_i(ddr_sys_clk_g),
+               .sys_rst(ddr_reset),
+               .c0_ddr4_adr(c0_ddr4_adr),
+               .c0_ddr4_ba(c0_ddr4_ba),
+               .c0_ddr4_cke(c0_ddr4_cke),
+               .c0_ddr4_cs_n(c0_ddr4_cs_n),
+               .c0_ddr4_dm_dbi_n(c0_ddr4_dm_dbi_n),
+               .c0_ddr4_dq(c0_ddr4_dq),
+               .c0_ddr4_dqs_c(c0_ddr4_dqs_c),
+               .c0_ddr4_dqs_t(c0_ddr4_dqs_t),
+               .c0_ddr4_odt(c0_ddr4_odt),
+               .c0_ddr4_bg(c0_ddr4_bg),
+               .c0_ddr4_reset_n(c0_ddr4_reset_n),
+               .c0_ddr4_act_n(c0_ddr4_act_n),
+               .c0_ddr4_ck_c(c0_ddr4_ck_c),
+               .c0_ddr4_ck_t(c0_ddr4_ck_t),
+               
+               // app
+               .c0_init_calib_complete(ddr_cal_ok),
+               .c0_ddr4_ui_clk(ddr_clk),
+               .c0_ddr4_ui_clk_sync_rst(ddr_reset_sync),
+               // we use the AXI interface
+               .c0_ddr4_aresetn(!ddr_reset_sync)
+               // but not now
+               );               
+ ddr4_vio u_vio(.clk(ddr_clk),
+                .probe_in0( ddr_cal_ok ),
+                .probe_in1( ddr_reset_sync ),
+                .probe_out0( ddr_reset ));              
+// ILA for event out
+// probe0: quiesce
+// probe1: open
+// probe2: wren
+// probe3: data 
+event_ila u_evila(.clk(xil_clk),
+                .probe0( interface_not_ready ),
+                .probe1( xil_event_out_open ),
+                .probe2( xil_event_out_wren ),
+                .probe3( xil_event_out_data ));
+
+xil_vio u_xilvio(.clk(xil_clk),
+                 .probe_in0( GPIO_LED[0] ),
+                 .probe_in1( GPIO_LED[1] ),
+                 .probe_in2( GPIO_LED[2] ),
+                 .probe_in3( GPIO_LED[3] ),
+                 .probe_in4( pcie_reset_n ));
+                
 sfp_vio u_sfpvio(.clk(clk_156mhz_int),
                  .probe_in0(sfp_1_npres),
                  .probe_in1(sfp_2_npres));
