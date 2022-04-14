@@ -66,7 +66,7 @@
     .``port_prefix``tlast( if_prefix``tlast``if_suffix )            
 
 `define CONNECT_AXI4S_IF( port_prefix, if_prefix )                  \
-    `CONNECT_AXI4S_MIN_IFV( port_prefix, if_prefix, `NO_SUFFIX )
+    `CONNECT_AXI4S_IFV( port_prefix, if_prefix, `NO_SUFFIX )
     
 
 `define NAMED_PORTS_AXI4S_IF( port_prefix, width, tohost_type, fromhost_type )      \
