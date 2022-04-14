@@ -48,7 +48,7 @@ module udp_port_switch #(parameter NUM_PORT = 1,
             assign onehot_select[i] = (s_udphdr_tdest & ~PORT_MASK[16*i +: 16] == PORTS[16*i +: 16] & ~PORT_MASK[16*i +: 16]);
         end
     endgenerate
-    assign drop_hdr = !(|onehot_select[NUM_PORT:1]);
+    assign drop_hdr = !(|onehot_select);
 
     integer j;
     always @(*) begin
