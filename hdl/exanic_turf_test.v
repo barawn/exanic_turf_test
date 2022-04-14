@@ -91,300 +91,58 @@ module exanic_turf_test(
     input pcie_reset_n
 );
 
+    parameter [31:0] IDENT = "TURF";
+    parameter [3:0] VER_MAJOR = 0;
+    parameter [3:0] VER_MINOR = 0;
+    parameter [7:0] VER_REV = 1;
+    localparam [15:0] FIRMWARE_VERSION = { VER_MAJOR, VER_MINOR, VER_REV };
+    parameter [15:0] FIRMWARE_DATE = {16{1'b0}};
+    localparam [31:0] DATEVERSION = { FIRMWARE_DATE, FIRMWARE_VERSION };
+    
 wire init_clk;
 (* KEEP = "TRUE" *)
 BUFG u_init_clk(.I(clk_10mhz),.O(init_clk));
 
-// Clock and reset
+wire ifclk;
+wire ifen;
+wire ifwr;
+wire ifack;
+wire [27:0] ifadr;
+wire [31:0] ifdat_read;
+wire [31:0] ifdat_write;
+reg [31:0] test_reg = {32{1'b0}};
+wire [31:0] registers[3:0];
+assign registers[0] = IDENT;
+assign registers[1] = DATEVERSION;
+assign registers[2] = test_reg;
+assign registers[3] = DATEVERSION;
 
-wire clk_161mhz_int;
-
-// Internal 125 MHz clock
-wire clk_125mhz_mmcm_out;
-wire clk_125mhz_int;
-wire rst_125mhz_int;
-
-// Internal 156.25 MHz clock
-wire clk_156mhz_int;
-wire rst_156mhz_int;
-
-wire mmcm_rst = 1'b0;
-wire mmcm_locked;
-wire mmcm_clkfb;
-
-// MMCM instance
-// 161.13 MHz in, 125 MHz out
-// PFD range: 10 MHz to 500 MHz
-// VCO range: 800 MHz to 1600 MHz
-// M = 64, D = 11 sets Fvco = 937.5 MHz (in range)
-// Divide by 7.5 to get output frequency of 125 MHz
-MMCME4_BASE #(
-    .BANDWIDTH("OPTIMIZED"),
-    .CLKOUT0_DIVIDE_F(7.5),
-    .CLKOUT0_DUTY_CYCLE(0.5),
-    .CLKOUT0_PHASE(0),
-    .CLKOUT1_DIVIDE(1),
-    .CLKOUT1_DUTY_CYCLE(0.5),
-    .CLKOUT1_PHASE(0),
-    .CLKOUT2_DIVIDE(1),
-    .CLKOUT2_DUTY_CYCLE(0.5),
-    .CLKOUT2_PHASE(0),
-    .CLKOUT3_DIVIDE(1),
-    .CLKOUT3_DUTY_CYCLE(0.5),
-    .CLKOUT3_PHASE(0),
-    .CLKOUT4_DIVIDE(1),
-    .CLKOUT4_DUTY_CYCLE(0.5),
-    .CLKOUT4_PHASE(0),
-    .CLKOUT5_DIVIDE(1),
-    .CLKOUT5_DUTY_CYCLE(0.5),
-    .CLKOUT5_PHASE(0),
-    .CLKOUT6_DIVIDE(1),
-    .CLKOUT6_DUTY_CYCLE(0.5),
-    .CLKOUT6_PHASE(0),
-    .CLKFBOUT_MULT_F(64),
-    .CLKFBOUT_PHASE(0),
-    .DIVCLK_DIVIDE(11),
-    .REF_JITTER1(0.010),
-    .CLKIN1_PERIOD(6.206),
-    .STARTUP_WAIT("FALSE"),
-    .CLKOUT4_CASCADE("FALSE")
-)
-clk_mmcm_inst (
-    .CLKIN1(clk_161mhz_int),
-    .CLKFBIN(mmcm_clkfb),
-    .RST(mmcm_rst),
-    .PWRDWN(1'b0),
-    .CLKOUT0(clk_125mhz_mmcm_out),
-    .CLKOUT0B(),
-    .CLKOUT1(),
-    .CLKOUT1B(),
-    .CLKOUT2(),
-    .CLKOUT2B(),
-    .CLKOUT3(),
-    .CLKOUT3B(),
-    .CLKOUT4(),
-    .CLKOUT5(),
-    .CLKOUT6(),
-    .CLKFBOUT(mmcm_clkfb),
-    .CLKFBOUTB(),
-    .LOCKED(mmcm_locked)
-);
-
-BUFG
-clk_125mhz_bufg_inst (
-    .I(clk_125mhz_mmcm_out),
-    .O(clk_125mhz_int)
-);
-
-sync_reset #(
-    .N(4)
-)
-sync_reset_125mhz_inst (
-    .clk(clk_125mhz_int),
-    .rst(~mmcm_locked),
-    .out(rst_125mhz_int)
-);
-
-// GPIO
-wire [1:0] sfp_1_led_int;
-wire [1:0] sfp_2_led_int;
-wire [1:0] sma_led_int;
-
-// XGMII 10G PHY
-
-assign sfp_1_tx_disable = 1'b0;
-assign sfp_2_tx_disable = 1'b0;
-assign sfp_1_rs = 1'b1;
-assign sfp_2_rs = 1'b1;
-
-wire        sfp_1_tx_clk_int;
-wire        sfp_1_tx_rst_int;
-wire [63:0] sfp_1_txd_int;
-wire [7:0]  sfp_1_txc_int;
-wire        sfp_1_rx_clk_int;
-wire        sfp_1_rx_rst_int;
-wire [63:0] sfp_1_rxd_int;
-wire [7:0]  sfp_1_rxc_int;
-wire        sfp_2_tx_clk_int;
-wire        sfp_2_tx_rst_int;
-wire [63:0] sfp_2_txd_int;
-wire [7:0]  sfp_2_txc_int;
-wire        sfp_2_rx_clk_int;
-wire        sfp_2_rx_rst_int;
-wire [63:0] sfp_2_rxd_int;
-wire [7:0]  sfp_2_rxc_int;
-
-assign clk_156mhz_int = sfp_1_tx_clk_int;
-assign rst_156mhz_int = sfp_1_tx_rst_int;
-
-wire sfp_1_rx_block_lock;
-wire sfp_2_rx_block_lock;
-
-wire sfp_gtpowergood;
-
-wire sfp_mgt_refclk;
-wire sfp_mgt_refclk_int;
-wire sfp_mgt_refclk_bufg;
-
-assign clk_161mhz_int = sfp_mgt_refclk_bufg;
-
-IBUFDS_GTE4 ibufds_gte4_sfp_mgt_refclk_inst (
-    .I     (sfp_mgt_refclk_p),
-    .IB    (sfp_mgt_refclk_n),
-    .CEB   (1'b0),
-    .O     (sfp_mgt_refclk),
-    .ODIV2 (sfp_mgt_refclk_int)
-);
-
-BUFG_GT bufg_gt_refclk_inst (
-    .CE      (sfp_gtpowergood),
-    .CEMASK  (1'b1),
-    .CLR     (1'b0),
-    .CLRMASK (1'b1),
-    .DIV     (3'b000),
-    .I       (sfp_mgt_refclk_int),
-    .O       (sfp_mgt_refclk_bufg)
-);
-
-wire sfp_qpll0lock;
-wire sfp_qpll0outclk;
-wire sfp_qpll0outrefclk;
-
-eth_xcvr_phy_wrapper #(
-    .HAS_COMMON(1)
-)
-sfp_1_phy_inst (
-    .xcvr_ctrl_clk(clk_125mhz_int),
-    .xcvr_ctrl_rst(rst_125mhz_int),
-
-    // Common
-    .xcvr_gtpowergood_out(sfp_gtpowergood),
-
-    // PLL out
-    .xcvr_gtrefclk00_in(sfp_mgt_refclk),
-    .xcvr_qpll0lock_out(sfp_qpll0lock),
-    .xcvr_qpll0outclk_out(sfp_qpll0outclk),
-    .xcvr_qpll0outrefclk_out(sfp_qpll0outrefclk),
-
-    // PLL in
-    .xcvr_qpll0lock_in(1'b0),
-    .xcvr_qpll0reset_out(),
-    .xcvr_qpll0clk_in(1'b0),
-    .xcvr_qpll0refclk_in(1'b0),
-
-    // Serial data
-    .xcvr_txp(sfp_1_tx_p),
-    .xcvr_txn(sfp_1_tx_n),
-    .xcvr_rxp(sfp_1_rx_p),
-    .xcvr_rxn(sfp_1_rx_n),
-
-    // PHY connections
-    .phy_tx_clk(sfp_1_tx_clk_int),
-    .phy_tx_rst(sfp_1_tx_rst_int),
-    .phy_xgmii_txd(sfp_1_txd_int),
-    .phy_xgmii_txc(sfp_1_txc_int),
-    .phy_rx_clk(sfp_1_rx_clk_int),
-    .phy_rx_rst(sfp_1_rx_rst_int),
-    .phy_xgmii_rxd(sfp_1_rxd_int),
-    .phy_xgmii_rxc(sfp_1_rxc_int),
-    .phy_tx_bad_block(),
-    .phy_rx_error_count(),
-    .phy_rx_bad_block(),
-    .phy_rx_sequence_error(),
-    .phy_rx_block_lock(sfp_1_rx_block_lock),
-    .phy_rx_high_ber(),
-    .phy_tx_prbs31_enable(),
-    .phy_rx_prbs31_enable()
-);
-
-eth_xcvr_phy_wrapper #(
-    .HAS_COMMON(0)
-)
-sfp_2_phy_inst (
-    .xcvr_ctrl_clk(clk_125mhz_int),
-    .xcvr_ctrl_rst(rst_125mhz_int),
-
-    // Common
-    .xcvr_gtpowergood_out(),
-
-    // PLL out
-    .xcvr_gtrefclk00_in(1'b0),
-    .xcvr_qpll0lock_out(),
-    .xcvr_qpll0outclk_out(),
-    .xcvr_qpll0outrefclk_out(),
-
-    // PLL in
-    .xcvr_qpll0lock_in(sfp_qpll0lock),
-    .xcvr_qpll0reset_out(),
-    .xcvr_qpll0clk_in(sfp_qpll0outclk),
-    .xcvr_qpll0refclk_in(sfp_qpll0outrefclk),
-
-    // Serial data
-    .xcvr_txp(sfp_2_tx_p),
-    .xcvr_txn(sfp_2_tx_n),
-    .xcvr_rxp(sfp_2_rx_p),
-    .xcvr_rxn(sfp_2_rx_n),
-
-    // PHY connections
-    .phy_tx_clk(sfp_2_tx_clk_int),
-    .phy_tx_rst(sfp_2_tx_rst_int),
-    .phy_xgmii_txd(sfp_2_txd_int),
-    .phy_xgmii_txc(sfp_2_txc_int),
-    .phy_rx_clk(sfp_2_rx_clk_int),
-    .phy_rx_rst(sfp_2_rx_rst_int),
-    .phy_xgmii_rxd(sfp_2_rxd_int),
-    .phy_xgmii_rxc(sfp_2_rxc_int),
-    .phy_tx_bad_block(),
-    .phy_rx_error_count(),
-    .phy_rx_bad_block(),
-    .phy_rx_sequence_error(),
-    .phy_rx_block_lock(sfp_2_rx_block_lock),
-    .phy_rx_high_ber(),
-    .phy_tx_prbs31_enable(),
-    .phy_rx_prbs31_enable()
-);
-
-assign sfp_1_led[0] = sfp_1_rx_block_lock;
-assign sfp_1_led[1] = 1'b0;
-assign sfp_2_led[0] = sfp_2_rx_block_lock;
-assign sfp_2_led[1] = 1'b0;
-assign sma_led = sma_led_int;
-
-turf_test_core
-core_inst (
-    /*
-     * Clock: 156.25 MHz
-     * Synchronous reset
-     */
-    .clk(clk_156mhz_int),
-    .rst(rst_156mhz_int),
-    /*
-     * GPIO
-     */
-    .sfp_1_led(sfp_1_led_int),
-    .sfp_2_led(sfp_2_led_int),
-    .sma_led(sma_led_int),
-    /*
-     * Ethernet: SFP+
-     */
-    .sfp_1_tx_clk(sfp_1_tx_clk_int),
-    .sfp_1_tx_rst(sfp_1_tx_rst_int),
-    .sfp_1_txd(sfp_1_txd_int),
-    .sfp_1_txc(sfp_1_txc_int),
-    .sfp_1_rx_clk(sfp_1_rx_clk_int),
-    .sfp_1_rx_rst(sfp_1_rx_rst_int),
-    .sfp_1_rxd(sfp_1_rxd_int),
-    .sfp_1_rxc(sfp_1_rxc_int),
-    .sfp_2_tx_clk(sfp_2_tx_clk_int),
-    .sfp_2_tx_rst(sfp_2_tx_rst_int),
-    .sfp_2_txd(sfp_2_txd_int),
-    .sfp_2_txc(sfp_2_txc_int),
-    .sfp_2_rx_clk(sfp_2_rx_clk_int),
-    .sfp_2_rx_rst(sfp_2_rx_rst_int),
-    .sfp_2_rxd(sfp_2_rxd_int),
-    .sfp_2_rxc(sfp_2_rxc_int)
-);
-
+turf_udp_wrap #(.NSFP(2)) 
+    u_udp_wrap( .sfp_led( { sfp_2_led, sfp_1_led } ),
+                .sfp_tx_p({ sfp_2_tx_p, sfp_1_tx_p } ),
+                .sfp_tx_n({ sfp_2_tx_n, sfp_1_tx_n } ),
+                .sfp_rx_p({ sfp_2_rx_p, sfp_1_rx_p } ),
+                .sfp_rx_n({ sfp_2_rx_n, sfp_1_rx_n } ),
+                .sfp_refclk_p( sfp_mgt_refclk_p ),
+                .sfp_refclk_n( sfp_mgt_refclk_n ),
+                .sfp_tx_disable( { sfp_2_tx_disable, sfp_1_tx_disable } ),
+                .sfp_npres( { sfp_2_npres, sfp_1_npres } ),
+                .sfp_los( { sfp_2_los, sfp_1_los } ),
+                .sfp_rs( { sfp_2_rs, sfp_1_rs } ),
+                
+                .clk_o(ifclk),
+                .en_o(ifen),
+                .wr_o(ifwr),
+                .ack_i(ifack),
+                .adr_o(ifadr),
+                .dat_i(ifdat_read),
+                .dat_o(ifdat_write));
+                
+assign ifack = ifen;
+assign ifdat_read = registers[ifadr[1:0]];
+always @(posedge ifclk) begin
+    if (ifen && ifwr && ifadr[1:0] == 2'd2) test_reg <= ifdat_write;
+end
 // xillybus
 wire xil_clk;
 wire interface_not_ready;
@@ -533,7 +291,7 @@ xil_vio u_xilvio(.clk(xil_clk),
                  .probe_in3( GPIO_LED[3] ),
                  .probe_in4( pcie_reset_n ));
                 
-sfp_vio u_sfpvio(.clk(clk_156mhz_int),
+sfp_vio u_sfpvio(.clk(ifclk),
                  .probe_in0(sfp_1_npres),
                  .probe_in1(sfp_2_npres));
 
