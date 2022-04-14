@@ -49,6 +49,40 @@
 `define TARGET_NAMED_PORTS_AXI4S_MIN_IF( port_prefix, width )     \
     `NAMED_PORTS_AXI4S_MIN_IF( port_prefix, width, output, input )
 
+/////////////////////////////////////////////////////////////////////
+// AXI4-Stream nominal interface: TDATA/TVALID/TREADY/TKEEP/TLAST. //
+/////////////////////////////////////////////////////////////////////
+`define DEFINE_AXI4S_IFV( prefix, suffix, width )   \
+    `DEFINE_AXI4S_MIN_IFV( prefix, suffix, width ); \
+    wire [ (width/8) - 1:0] prefix``tkeep``suffix;  \
+    wire prefix``tlast``suffix
+
+`define DEFINE_AXI4S_IF( prefix, width )            \
+    `DEFINE_AXI4S_IFV( prefix, `NO_SUFFIX, width )
+
+`define CONNECT_AXI4S_IFV( port_prefix, if_prefix, if_suffix )      \
+    `CONNECT_AXI4S_MIN_IFV( port_prefix, if_prefix, if_suffix ),        \
+    .``port_prefix``tkeep( if_prefix``tkeep``if_suffix ),               \
+    .``port_prefix``tlast( if_prefix``tlast``if_suffix )            
+
+`define CONNECT_AXI4S_IF( port_prefix, if_prefix )                  \
+    `CONNECT_AXI4S_MIN_IFV( port_prefix, if_prefix, `NO_SUFFIX )
+    
+
+`define NAMED_PORTS_AXI4S_IF( port_prefix, width, tohost_type, fromhost_type )      \
+    `NAMED_PORTS_AXI4S_MIN_IF( port_prefix, width, tohost_type, fromhost_type ),    \
+    fromhost_type [ width/8 - 1:0]  port_prefix``tkeep,                             \
+    fromhost_type                   port_prefix``tlast
+
+
+`define HOST_NAMED_PORTS_AXI4S_IF( port_prefix, width )     \
+    `NAMED_PORTS_AXI4S_IF( port_prefix, width, input, output )
+
+
+`define TARGET_NAMED_PORTS_AXI4S_IF( port_prefix, width )   \
+    `NAMED_PORTS_AXI4S_IF( port_prefix, width, output, input )
+
+    
 /////////////////////////////////////////////////////////////
 // Darklite split interface.                               //
 // macro for bus definition of 64/256 split interface      //
