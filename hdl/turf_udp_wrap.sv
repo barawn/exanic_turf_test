@@ -1,4 +1,6 @@
 `timescale 1ns / 1ps
+`include "interfaces.vh"
+
 // This module wraps up the various SFP and UDP related stuff.
 // 
 module turf_udp_wrap #(parameter NSFP=2)(
@@ -15,6 +17,7 @@ module turf_udp_wrap #(parameter NSFP=2)(
         output [NSFP-1:0] sfp_rs,
         
         // register interface
+        output  clk_o,
         output  en_o,
         output  wr_o,
         input   ack_i,
@@ -187,6 +190,10 @@ module turf_udp_wrap #(parameter NSFP=2)(
         end        
     endgenerate
 
+    // kill the unused. well, make it go idle I guess
+    assign sfp_txd[1] = 64'h0707070707070707;
+    assign sfp_txc[1] = 8'hff;
+    
     // the header path is always 64 bits
     localparam PAYLOAD_WIDTH=64;
 
@@ -255,7 +262,7 @@ module turf_udp_wrap #(parameter NSFP=2)(
     wire [(PAYLOAD_WIDTH/8)-1:0] data_tkeep;
     wire [NUM_INBOUND-1:0] data_tlast;
     
-    wire [NUM_INBOUND-1:0] port_active;
+    wire [NUM_INBOUND-1:0] in_port_active;
     
     localparam NUM_OUTBOUND = 5;
     localparam TE_PORT = 4;
@@ -277,7 +284,7 @@ module turf_udp_wrap #(parameter NSFP=2)(
     wire [NUM_OUTBOUND-1:0]                 dataout_tlast;        
     
     udp_port_switch #(.NUM_PORT(NUM_INBOUND),
-                      .PORT( INBOUND ),
+                      .PORTS( INBOUND ),
                       .PORT_MASK( INBOUND_MASK ),
                       .PAYLOAD_WIDTH(PAYLOAD_WIDTH))
               u_udpin_switch( .aclk(clk156), .aresetn(!clk156_rst),
@@ -296,29 +303,36 @@ module turf_udp_wrap #(parameter NSFP=2)(
                               .m_udpdata_tkeep( data_tkeep),
                               .m_udpdata_tlast( data_tlast),
                               
-                              .port_active(port_active));
+                              .port_active(in_port_active));
 
     // kill non-implemented ports
-    assign hdr_tready[TA_PORT] = 1'b1;
-    assign data_tready[TA_PORT] = 1'b1;
-    assign hdr_tready[TN_PORT] = 1'b1;
-    assign data_tready[TN_PORT] = 1'b1;
-    assign hdr_tready[TC_PORT] = 1'b1;
-    assign data_tready[TC_PORT] = 1'b1;
+    `define KILL_UDP_IN(idx) \
+        assign hdr_tready[ idx ] = 1'b1; \
+        assign data_tready[ idx ] = 1'b1
 
-    assign hdrout_tvalid[TA_PORT] = 1'b0;
-    assign dataout_tvalid[TA_PORT] = 1'b0;
-    assign hdrout_tvalid[TN_PORT] = 1'b0;
-    assign dataout_tvalid[TN_PORT] = 1'b0;
-    assign hdrout_tvalid[TC_PORT] = 1'b0;
-    assign dataout_tvalid[TC_PORT] = 1'b0;
-    assign hdrout_tvalid[TE_PORT] = 1'b0;
-    assign dataout_tvalid[TE_PORT] = 1'b0;
-
+    `define KILL_UDP_OUT(idx) \
+        assign hdrout_tvalid[ idx ] = 1'b0;                                                           \
+        assign hdrout_tdata[64* idx  +: 64] = {64{1'b0}};                                             \
+        assign hdrout_tuser[16* idx  +: 16] = OUTBOUND[16* idx  +: 16];                             \
+        assign dataout_tvalid[ idx ] = 1'b0;                                                          \
+        assign dataout_tdata[PAYLOAD_WIDTH* idx  +: PAYLOAD_WIDTH] = {PAYLOAD_WIDTH{1'b0}};           \
+        assign dataout_tkeep[(PAYLOAD_WIDTH/8)* idx  +: (PAYLOAD_WIDTH/8)] = {(PAYLOAD_WIDTH/8){1'b0}};   \
+        assign dataout_tlast[ idx ] = 1'b0
+    
+    `KILL_UDP_IN( TA_PORT );
+    `KILL_UDP_IN( TN_PORT );
+    `KILL_UDP_IN( TC_PORT ); 
+    
+    `KILL_UDP_OUT( TA_PORT );
+    `KILL_UDP_OUT( TN_PORT );
+    `KILL_UDP_OUT( TC_PORT );
+    `KILL_UDP_OUT( TE_PORT );
+            
     // now try the UDP RDWR core
     wire rdwr_tuser = (hdr_tdest[16*TRW_PORT +: 16] == INBOUND[TRW_PORT*16 +: 16]);
     wire rdwrout_tuser;
-    turf_udp_rdwr u_rdwr( .aclk(aclk),.aresetn(aresetn),
+    assign hdrout_tuser[16*TRW_PORT +: 16] = (rdwrout_tuser) ? OUTBOUND[TRW_PORT*16 +: 16] : TW_PORT_VALUE;
+    turf_udp_rdwr u_rdwr( .aclk(clk156),.aresetn(!clk156_rst),
                           // I REALLY NEED ARRAY MACROS
                           .s_hdr_tdata( hdr_tdata[64*TRW_PORT +: 64]),
                           .s_hdr_tvalid(hdr_tvalid[TRW_PORT]),
@@ -349,6 +363,28 @@ module turf_udp_wrap #(parameter NSFP=2)(
                           .dat_i(dat_i),
                           .ack_i(ack_i));                          
 
-    
+    wire [NUM_OUTBOUND-1:0] out_port_active;
+    udp_port_mux #(.NUM_PORT(NUM_OUTBOUND),
+                   .PAYLOAD_WIDTH(PAYLOAD_WIDTH))
+                   u_udpmux(.aclk(clk156),.aresetn(!clk156_rst),
+                            `CONNECT_AXI4S_MIN_IF( s_udphdr_ , hdrout_ ),
+                            .s_udphdr_tuser( hdrout_tuser ),
+                            `CONNECT_AXI4S_IF( s_udpdata_ , dataout_ ),
+                            
+                            `CONNECT_AXI4S_MIN_IF( m_udphdr_ , udpout_hdr_ ),
+                            .m_udphdr_tuser( udpout_hdr_tuser ),
+                            `CONNECT_AXI4S_IF( m_udpdata_ , udpout_data_ ),
+                            
+                            .port_active(out_port_active));
+
+    udp_ila u_udp_ila( .clk(clk156),
+                       .probe0( udpin_hdr_tdest ),
+                       .probe1( udpin_hdr_tvalid),
+                       .probe2( udpin_data_tdata ),
+                       .probe3( udpin_data_tkeep ),
+                       .probe4( udpin_data_tvalid ),
+                       .probe5( udpin_data_tready ),
+                       .probe6( udpin_data_tlast ),
+                       .probe7( udpin_hdr_tdata[0 +: 15] ));                      
 
 endmodule
