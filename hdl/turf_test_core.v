@@ -587,8 +587,15 @@ udp_payload_fifo (
     .status_good_frame()
 );
 
+    // just check this out
+    wire [1:0] select;    
+    udp_port_switch #(.NUM_PORT(2), .PORTS({ 16'd1234, 16'd5678 }) )
+        u_switch( .aclk(clk),.aresetn(!rst),
+                  .s_udphdr_tdest(rx_udp_dest_port),
+                  .select(select));
+
     udp_ila u_ila(.clk(clk),
-                  .probe0(rx_udp_dest_port),
+                  .probe0({ {14{1'b0}}, select }),
                   .probe1(rx_udp_hdr_valid),
                   .probe2(rx_udp_payload_axis_tdata),
                   .probe3(rx_udp_payload_axis_tkeep),
