@@ -387,4 +387,14 @@ module turf_udp_wrap #(parameter NSFP=2)(
                        .probe6( udpin_data_tlast ),
                        .probe7( udpin_hdr_tdata[0 +: 15] ));                      
 
+    udp_ila u_udpout_ila( .clk(clk156),
+                             .probe0( udpout_hdr_tuser ),
+                             .probe1( udpout_hdr_tvalid ),
+                             .probe2( udpout_data_tdata ),
+                             .probe3( udpout_data_tkeep ),
+                             .probe4( udpout_data_tvalid ),
+                             .probe5( udpout_data_tready ),
+                             .probe6( udpout_data_tlast ),
+                             .probe7( udpout_hdr_tdata[0 +: 15] ));
+
 endmodule
