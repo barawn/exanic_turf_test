@@ -43,6 +43,8 @@ module turf_udp_rdwr(
         output [31:0] dat_o
     );
     
+    parameter DEBUG = "TRUE";
+    
     // First we need to combine the headers and payloads.
     wire [3:0] hdr_tuser = { 3'b111, s_hdr_tuser[0] };
     wire [3:0] payload_tuser = { &s_payload_tkeep[7:4], &s_payload_tkeep[3:0], 2'b00 };
@@ -348,4 +350,16 @@ module turf_udp_rdwr(
     // data output is always the low bits
     assign dat_o = fifo_out_tdata[0 +: 32];
 
+    generate
+        if (DEBUG == "TRUE") begin : ILA
+            udp_rdwr_ila u_ila(.clk(aclk),
+                               .probe0( fifo_out_tdata ),
+                               .probe1( fifo_out_tuser ),
+                               .probe2( fifo_out_tready ),
+                               .probe3( fifo_out_tvalid ),
+                               .probe4( fifo_out_tlast ),
+                               .probe5( state ));
+        end
+    endgenerate
+    
 endmodule
