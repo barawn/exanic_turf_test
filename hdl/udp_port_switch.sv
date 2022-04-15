@@ -24,7 +24,7 @@ module udp_port_switch #(parameter NUM_PORT = 1,
                          output [NUM_PORT*64-1:0] m_udphdr_tdata,
                          output [NUM_PORT-1:0] m_udphdr_tvalid,
                          input  [NUM_PORT-1:0] m_udphdr_tready,
-                         output [NUM_PORT-1:0] m_udphdr_tdest,
+                         output [16*NUM_PORT-1:0] m_udphdr_tdest,
                          // see above
                          output [NUM_PORT*PAYLOAD_WIDTH-1:0] m_udpdata_tdata,
                          output [NUM_PORT-1:0] m_udpdata_tvalid,
@@ -35,17 +35,19 @@ module udp_port_switch #(parameter NUM_PORT = 1,
                          // helpful for statistics 
                          output [NUM_PORT-1:0] port_active                         
     );
-
+    localparam [16*NUM_PORT-1:0] MATCH_VAL = PORTS & ~PORT_MASK;    
     localparam N_ENCODE_BITS = $clog2(NUM_PORT);
     reg [N_ENCODE_BITS-1:0] encode;    
     // one-hot encode first
+    wire [15:0] masked_dest[NUM_PORT-1:0];
     wire [NUM_PORT-1:0] onehot_select;
     reg [NUM_PORT-1:0] port_active_reg = {NUM_PORT{1'b0}};
     wire drop_hdr;
     generate
-        genvar i;
+        genvar i;        
         for (i=0;i<NUM_PORT;i=i+1) begin : MATCH
-            assign onehot_select[i] = (s_udphdr_tdest & ~PORT_MASK[16*i +: 16] == PORTS[16*i +: 16] & ~PORT_MASK[16*i +: 16]);
+            assign masked_dest[i] = s_udphdr_tdest & ~PORT_MASK[16*i +: 16];
+            assign onehot_select[i] = masked_dest[i] == MATCH_VAL[16*i +: 16];            
         end
     endgenerate
     assign drop_hdr = !(|onehot_select);
