@@ -12,7 +12,7 @@
 // bits [15:0]  = length
 // and tuser[1] is set.
 // tuser[3:2] indicate if the [high:low] 32 bits are valid
-// tuser[0] indicates a read port match (when tuser[1] is set)
+// tuser[0] indicates a read port match (when tuser[1] is set) or all-zero low 32-bits (when not)
 module turf_udp_rdwr(
         input aclk,
         input aresetn,
@@ -47,7 +47,7 @@ module turf_udp_rdwr(
     
     // First we need to combine the headers and payloads.
     wire [3:0] hdr_tuser = { 3'b111, s_hdr_tuser[0] };
-    wire [3:0] payload_tuser = { &s_payload_tkeep[7:4], &s_payload_tkeep[3:0], 2'b00 };
+    wire [3:0] payload_tuser = { &s_payload_tkeep[7:4], &s_payload_tkeep[3:0], 1'b0, |s_payload_tdata[31:0] };
         
     reg select_payload = 0;
     always @(posedge aclk) begin
@@ -160,11 +160,19 @@ module turf_udp_rdwr(
     // tuser[1] = header
     // tuser[2] = low 32 bits are valid
     // tuser[3] = high 32 bits are valid
+    
+    // Autoclear last write when we read address 0 with tag 0 (initialize).
+    wire reset_write_valid = (state == READ_0_CHECK && fifo_out_tuser[1:0] == 2'b01 && fifo_out_tvalid);
+    reg reset_write_valid_r = 0;
+    
     always @(posedge aclk) begin
+        reset_write_valid_r <= reset_write_valid;
+    
+        // we don't need to clear last_read_valid on a read of address 0, it's never checked
         if (!aresetn) last_read_valid <= 0;
         else if (state == READ_0_CHECK && fifo_out_tvalid && fifo_out_tuser[2]) last_read_valid <= 1;
-        
-        if (!aresetn) last_write_valid <= 0;
+        // we DO need to clear last_write_valid on a read 
+        if (!aresetn || reset_write_valid_r) last_write_valid <= 0;
         else if (state == WRITE_CHECK && fifo_out_tvalid && fifo_out_tuser[3:2] == 2'b11) last_write_valid <= 1;
     
         if (state == IDLE && fifo_out_tvalid && fifo_out_tready && fifo_out_tuser[1])
@@ -218,7 +226,7 @@ module turf_udp_rdwr(
                 READ_0_CHECK: if (fifo_out_tvalid) begin
                     if (fifo_out_tuser[2]) begin
                         // packet loss guard
-                        if (fifo_out_tdata[31:0] == read_response[63:32] && last_read_valid) state <= READ_SKIP;
+                        if (!fifo_out_tuser[0] && fifo_out_tdata[31:0] == read_response[63:32] && last_read_valid) state <= READ_SKIP;
                         else state <= READ_0_ACK;
                     // DUMP just goes through all data until TLAST and then
                     // pushes out a response if there was any data written
