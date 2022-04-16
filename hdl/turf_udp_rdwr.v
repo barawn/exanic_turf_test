@@ -325,10 +325,10 @@ module turf_udp_rdwr(
     end
 
     // outbound payload. user_tlast happens when we have to peek ahead.
-    assign payload_out_tlast = user_last || (state == WRITE_RESP) || (state == READ_0_RESP && !fifo_out_tuser[3]);
+    assign payload_out_tlast = user_last || (state == READ_SKIP) || (state == WRITE_RESP) || (state == READ_0_RESP && !fifo_out_tuser[3]);
     assign payload_out_tdata[63:32] = (state == WRITE_RESP) ? write_response : read_response[63:32];
     assign payload_out_tdata[31:0] = read_response[31:0];
-    assign payload_out_tvalid = (state == READ_0_RESP || state == READ_1_RESP || state == WRITE_RESP);
+    assign payload_out_tvalid = (state == READ_0_RESP || state == READ_1_RESP || state == WRITE_RESP || state == READ_SKIP);
     
     // pass through FIFO (64 bits+tlast)
     axis_ccfifo64_tlast u_outfifo(.s_aclk(aclk),.s_aresetn(aresetn),
