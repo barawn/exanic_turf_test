@@ -112,7 +112,7 @@ module turf_udp_rdwr(
 
     reg read_path = 0;
 
-    reg [15:0] response_length = {16{1'b0}};
+    reg [15:0] response_length = 16'd8;
     reg [47:0] response_ipport = {48{1'b0}};
 
     // this just simplifies things
@@ -173,7 +173,8 @@ module turf_udp_rdwr(
         if (fifo_out_tvalid && fifo_out_tready && fifo_out_tuser[1] && state == IDLE) begin
             response_ipport <= fifo_out_tdata[16 +: 48];
         end
-        if (state == IDLE) response_length <= {16{1'b0}};
+        // This is the UDP length, which always starts at 8.
+        if (state == IDLE) response_length <= 16'd8;
         else begin
             if (payload_out_tready && payload_out_tvalid) response_length <= response_length + 8;
         end
@@ -297,7 +298,7 @@ module turf_udp_rdwr(
                 // WRITE_CHECK, WRITE_ACK, WRITE, WRITE_DUMP, WRITE
                 // tready is always set here
                 DUMP_CHECK_RESP: if (fifo_out_tvalid && fifo_out_tlast) begin
-                    if (response_length != {16{1'b0}}) state <= RESP_HEADER;
+                    if (response_length != 16'd8) state <= RESP_HEADER;
                     else state <= IDLE;
                 end
                 // tready is always set here
@@ -323,8 +324,8 @@ module turf_udp_rdwr(
         endcase
     end
 
-    // outbound payload
-    assign payload_out_tlast = user_last || (state == WRITE_RESP);
+    // outbound payload. user_tlast happens when we have to peek ahead.
+    assign payload_out_tlast = user_last || (state == WRITE_RESP) || (state == READ_0_RESP && !fifo_out_tuser[3]);
     assign payload_out_tdata[63:32] = (state == WRITE_RESP) ? write_response : read_response[63:32];
     assign payload_out_tdata[31:0] = read_response[31:0];
     assign payload_out_tvalid = (state == READ_0_RESP || state == READ_1_RESP || state == WRITE_RESP);
