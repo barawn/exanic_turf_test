@@ -89,13 +89,13 @@ module frame_buffer_1MB_testbench;
   wire       s_ack_tready;
   
   reg [255:0] s_ddrev_tdata = {256{1'b0}};
-  reg [31:0] s_ddrev_tkeep = {32{1'b0}};
+  reg [31:0] s_ddrev_tkeep = {32{1'b1}};
   reg s_ddrev_tvalid = 0;
   reg s_ddrev_tlast = 0;
   wire s_ddrev_tready;
   
   reg [31:0] s_nack_tdata = {32{1'b0}};
-  reg        s_nack_valid = 0;
+  reg        s_nack_tvalid = 0;
   wire s_nack_tready;
   
   sim_tb_top u_ddr(
@@ -111,7 +111,9 @@ module frame_buffer_1MB_testbench;
     .c0_ddr4_dm_dbi_n(ddr_dm_n),
     .c0_ddr4_dq(ddr_dq),
     .c0_ddr4_dqs_t(ddr_dqs_t),
-    .c0_ddr4_dqs_c(ddr_dqs_c));
+    .c0_ddr4_dqs_c(ddr_dqs_c),
+    .c0_ddr4_cs_n(ddr_cs_n),
+    .c0_ddr4_odt(ddr_odt));
 
   wire [8:0] allow_count;
   wire allow = (s_ack_tdata[15] && s_ack_tvalid && s_ack_tready);
@@ -170,6 +172,24 @@ module frame_buffer_1MB_testbench;
     end
   endtask
     
+  task write_nack;
+    input [11:0] addr;
+    input [19:0] len;
+    begin
+        @(posedge aclk);
+        #100;
+        s_nack_tvalid = 1;
+        s_nack_tdata = { addr, len };
+        while (!s_nack_tready) begin
+            @(posedge aclk);
+            #100;
+        end
+        @(posedge aclk);
+        #100;
+        s_nack_tvalid = 0;
+    end
+   endtask
+    
   
   frame_buffer_1MB_wrapper u_buf(
     .aclk(aclk),
@@ -210,9 +230,29 @@ module frame_buffer_1MB_testbench;
     `CONNECT_AXI4S_MIN_IF(s_nack_ , s_nack_ ));
     
     initial begin
-        #5000000;
-        write_ack( 0, 1);
+        #20000000;
+        // prep ack.
+        // Allow for 4 events.
+        write_ack( 0, 0);
+        write_ack( 1, 0);
+        write_ack( 2, 0);
+        // last one gets 1 allow to start things flowing.
+        write_ack( 3, 1);
+        // push an event... (readout will flow through automatically)
         write_event(100, "Ev00");
+        // and another one
+        write_event(120, "Ev01");
+        
+        // event flow is really quick, like a microsecond
+        // (ddr is fast)
+        #10000000;
+        
+        // nack the first one: it should show up again
+        write_nack( 0, 3200 );
+             
+        #10000000;
+        // now ack the first one, and the second event should flow
+        write_ack( 0, 1);        
     end
     
     
