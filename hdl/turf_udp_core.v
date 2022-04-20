@@ -17,6 +17,8 @@ module turf_udp_core(
         input sfp_rx_rst,
         input [63:0] sfp_rxd,
         input [7:0] sfp_rxc,
+        // my MAC address
+        output [47:0] my_mac_address,        
         // UDP out: combination of src ip/port + length
         // [32 +: 32] = src ip
         // [16 +: 16] = src port
@@ -40,6 +42,9 @@ module turf_udp_core(
     // grab the damn MAC address from the EEPROM?
     reg [31:0] local_mac = 32'h00_00_00_00;
     wire [47:0] MY_MAC        = { 16'h02_00, local_mac };
+
+    assign my_mac_address = MY_MAC;
+
     parameter [31:0] MY_IP_ADDRESS = { 8'd192,  8'd168,  8'd1,    8'd128 };
     parameter [31:0] MY_NETMASK    = { 8'd255,  8'd255,  8'd255,  8'd0   };
     parameter [31:0] MY_GATEWAY    = { 8'd192,  8'd168,  8'd1,    8'd1   };
