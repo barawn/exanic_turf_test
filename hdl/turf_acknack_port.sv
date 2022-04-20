@@ -29,11 +29,12 @@ module turf_acknack_port #(
     );
     
     // kill bit 62, always ignored (used for OPEN)
+    localparam OPEN_BIT = 62;
     localparam [63:0] MY_CHECK_BITS =
-        { CHECK_BITS[63],1'b0,CHECK_BITS[61:0] };
-    
+        { CHECK_BITS[63:OPEN_BIT+1],1'b0,CHECK_BITS[OPEN_BIT-1:0] };
+        
     reg [31:0] this_ip = {32{1'b0}};
-    reg [15:0] this_port {32{1'b0}};
+    reg [15:0] this_port = {32{1'b0}};
     // the LENGTH of our reply is always 16.
     wire [15:0] this_length = 16'd16;
         
@@ -47,8 +48,12 @@ module turf_acknack_port #(
     localparam [FSM_BITS-1:0] READ_DATA_N = 3;
     localparam [FSM_BITS-1:0] READ_SKIP = 4;
     localparam [FSM_BITS-1:0] DUMP = 5;
-    localparam [FSM_BITS-1:0] WRITE_RESPONSE = 6;
+    localparam [FSM_BITS-1:0] WRITE_HEADER = 6;
+    localparam [FSM_BITS-1:0] WRITE_RESPONSE = 7;
     reg [FSM_BITS-1:0] state = IDLE;
+
+    // the udpdata ready logic is hard
+    reg s_udpdata_tready_r;    
     
     always @(posedge aclk) begin    
         if (!aresetn || !event_open_i) last_valid <= 0;
@@ -63,41 +68,76 @@ module turf_acknack_port #(
             this_port <= s_udphdr_tdata[16 +: 16];
         end
         
-        always @(posedge aclk) begin
-            if (!aresetn) state <= IDLE;
-            else begin
-                case (state)
-                    // s_udphdr_tready is always 1 here
-                    IDLE: if (s_udphdr_tvalid && s_udphdr_tready) state <= CHECK_DATA_0;
-                    // DUMP is EXCLUSIVELY for when we receive less than 8 bytes and DON'T respond
-                    // s_udpdata_tready is always 0 here
-                    CHECK_DATA_0: if (s_udpdata_tvalid) begin
-                        if (s_udpdata_tkeep != 8'hFF) state <= DUMP;
-                        else if (last_valid) begin
-                            // this should optimize away
-                            if (s_udpdata_tdata & MY_CHECK_BITS == last_store) state <= READ_SKIP;
-                            else state <= WRITE_DATA;
-                        end else state <= WRITE_DATA;
+        if (!aresetn) state <= IDLE;
+        else begin
+            case (state)
+                // s_udphdr_tready is always 1 here
+                IDLE: if (s_udphdr_tvalid && s_udphdr_tready) state <= CHECK_DATA_0;
+                // DUMP is EXCLUSIVELY for when we receive less than 8 bytes and DON'T respond
+                // s_udpdata_tready is always 0 here
+                CHECK_DATA_0: if (s_udpdata_tvalid) begin
+                    if (s_udpdata_tkeep != 8'hFF) state <= DUMP;
+                    else if (!event_open_i) state <= READ_SKIP;
+                    else if (last_valid) begin
+                        // this should optimize away
+                        if (s_udpdata_tdata & MY_CHECK_BITS == last_store) state <= READ_SKIP;
+                        else state <= WRITE_DATA;
+                    end else state <= WRITE_DATA;
+                end
+                // s_udpdata_tready is m_acknack_tready here
+                WRITE_DATA: 
+                    if (m_acknack_tready) begin
+                        // single valid ack
+                        if (s_udpdata_tlast) state <= WRITE_HEADER;
+                        // more than 1
+                        else state <= READ_DATA_N;
                     end
-                    // s_udpdata_tready is m_acknack_tready here
-                    WRITE_DATA: 
-                        if (m_acknack_tready) begin
-                            // single valid ack
-                            if (s_udpdata_tlast) state <= WRITE_RESPONSE;
-                            // more than 1
-                            else state <= READ_DATA_N;
-                        end
-                    // s_udpdata_tready is always 0 here
-                    READ_DATA_N:
-                        if (s_udpdata_tvalid) begin
-                            if (s_udpdata_tkeep != 8'hFF) state <= READ_SKIP;
-                            else state <= WRITE_DATA;
-                        end
-                    // s_udpdata_tready is always 1 here
-                    READ_SKIP:
-                        if (s_udpdata_tvalid && s_udpdata_tlast) state <= WRITE_RESPONSE;
-                    // no response, we didn't get anything valid
-                    DUMP:
-                        if (s_udpdata_tvalid && s_udpdata_tlast) state <= IDLE;
-                    
+                // s_udpdata_tready is always 0 here
+                READ_DATA_N:
+                    if (s_udpdata_tvalid) begin
+                        if (s_udpdata_tkeep != 8'hFF) state <= READ_SKIP;
+                        else state <= WRITE_DATA;
+                    end
+                // s_udpdata_tready is always 1 here
+                READ_SKIP:
+                    if (s_udpdata_tvalid && s_udpdata_tlast) state <= WRITE_HEADER;
+                // no response, we didn't get anything valid
+                // s_udpdata_tready is always 1 here
+                DUMP:
+                    if (s_udpdata_tvalid && s_udpdata_tlast) state <= IDLE;
+                WRITE_HEADER:
+                    if (m_udphdr_tvalid && m_udphdr_tready) state <= WRITE_RESPONSE;
+                WRITE_RESPONSE:
+                    if (m_udpdata_tvalid && m_udpdata_tready) state <= IDLE;
+            endcase
+        end
+    end
+    
+    always @(*) begin
+        case (state)
+            IDLE, CHECK_DATA_0, READ_DATA_N, WRITE_HEADER, WRITE_RESPONSE: s_udpdata_tready_r <= 1'b0;
+            READ_SKIP, DUMP: s_udpdata_tready_r <= 1'b1;
+            WRITE_DATA: s_udpdata_tready_r <= m_acknack_tready;
+        endcase
+    end
+    
+    // s_udpdata_ handling...
+    assign s_udpdata_tready = s_udpdata_tready_r;
+        
+    // s_udphdr_ handling...
+    assign s_udphdr_tready = (state == IDLE);
+    // m_udphdr_ handling...
+    assign m_udphdr_tvalid = (state == WRITE_HEADER);
+    assign m_udphdr_tdata = { this_ip, this_port, this_length };
+    // m_udpdata_ handling...
+    assign m_udpdata_tvalid = (state == WRITE_RESPONSE);
+    assign m_udpdata_tkeep = 8'hFF;
+    assign m_udpdata_tlast = 1'b1;
+    // plug in the open bit, so you'll know why it had no effect.
+    assign m_udpdata_tdata = (last_store & MY_CHECK_BITS) | (event_open_i << OPEN_BIT);
+
+    // m_acknack_ handling
+    assign m_acknack_tvalid = (state == WRITE_DATA);            
+    assign m_acknack_tdata = m_udpdata_tdata & MY_CHECK_BITS;
+
 endmodule
