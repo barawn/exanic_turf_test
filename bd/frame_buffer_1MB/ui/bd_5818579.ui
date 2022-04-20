@@ -1,0 +1,107 @@
+{
+   "ActiveEmotionalView":"Default View",
+   "Default View_ScaleFactor":"1.07242",
+   "Default View_TopLeft":"-157,299",
+   "ExpandedHierarchyInLayout":"",
+   "guistr":"# # String gsaved with Nlview 7.0.21  2019-05-29 bk=1.5064 VDI=41 GEI=36 GUI=JA:9.0 non-TLS
+#  -string -flagsOSRD
+preplace port s_nack -pg 1 -lvl 0 -x -40 -y 880 -defaultsOSRD
+preplace port m_s2mm_sts -pg 1 -lvl 14 -x 4560 -y 840 -defaultsOSRD
+preplace port ddr -pg 1 -lvl 14 -x 4560 -y 60 -defaultsOSRD
+preplace port s_ddrev -pg 1 -lvl 0 -x -40 -y 560 -defaultsOSRD
+preplace port s_ack -pg 1 -lvl 0 -x -40 -y 740 -defaultsOSRD
+preplace port m_ddrev -pg 1 -lvl 14 -x 4560 -y 810 -defaultsOSRD
+preplace port m_mm2s_sts -pg 1 -lvl 14 -x 4560 -y 590 -defaultsOSRD
+preplace port m_event -pg 1 -lvl 14 -x 4560 -y 920 -defaultsOSRD
+preplace port ddr_ref_clk -pg 1 -lvl 0 -x -40 -y 110 -defaultsOSRD
+preplace port reset_i -pg 1 -lvl 0 -x -40 -y 460 -defaultsOSRD
+preplace port allow_i -pg 1 -lvl 0 -x -40 -y 1020 -defaultsOSRD
+preplace port ddr_ready -pg 1 -lvl 14 -x 4560 -y 90 -defaultsOSRD
+preplace port ddr_clk -pg 1 -lvl 14 -x 4560 -y 780 -defaultsOSRD
+preplace port aclk -pg 1 -lvl 0 -x -40 -y 780 -defaultsOSRD
+preplace port aresetn -pg 1 -lvl 0 -x -40 -y 810 -defaultsOSRD
+preplace portBus allow_count_o -pg 1 -lvl 14 -x 4560 -y 400 -defaultsOSRD
+preplace inst ddr4_0 -pg 1 -lvl 10 -x 3370 -y 120 -defaultsOSRD
+preplace inst axi_datamover_0 -pg 1 -lvl 8 -x 2630 -y 590 -defaultsOSRD
+preplace inst axi_smc -pg 1 -lvl 9 -x 3010 -y 670 -defaultsOSRD
+preplace inst rst_ddr4_0_300M -pg 1 -lvl 2 -x 520 -y 460 -defaultsOSRD
+preplace inst pending_readout_fifo -pg 1 -lvl 9 -x 3010 -y 360 -defaultsOSRD
+preplace inst s2mm_addrhighfifo -pg 1 -lvl 5 -x 1530 -y 480 -defaultsOSRD
+preplace inst sts_addrlenerr_split -pg 1 -lvl 6 -x 1870 -y 810 -defaultsOSRD
+preplace inst s2mm_cmd_broadcast -pg 1 -lvl 3 -x 850 -y 790 -defaultsOSRD
+preplace inst stsaddr_to_addrlen -pg 1 -lvl 8 -x 2630 -y 350 -defaultsOSRD
+preplace inst s2mm_cmd_builder -pg 1 -lvl 7 -x 2230 -y 840 -defaultsOSRD
+preplace inst strip_addr_high -pg 1 -lvl 4 -x 1190 -y 690 -defaultsOSRD
+preplace inst s2mm_stat_strip -pg 1 -lvl 10 -x 3370 -y 840 -defaultsOSRD
+preplace inst addrhigh_widen -pg 1 -lvl 6 -x 1870 -y 480 -defaultsOSRD
+preplace inst addrlen_combine -pg 1 -lvl 7 -x 2230 -y 340 -defaultsOSRD
+preplace inst axis_switch_0 -pg 1 -lvl 5 -x 1530 -y 670 -defaultsOSRD
+preplace inst addrlen_to_cmd -pg 1 -lvl 7 -x 2230 -y 510 -defaultsOSRD
+preplace inst axis_broadcaster_0 -pg 1 -lvl 6 -x 1870 -y 650 -defaultsOSRD
+preplace inst mm2s_addrlen_fifo -pg 1 -lvl 7 -x 2230 -y 680 -defaultsOSRD
+preplace inst mm2s_addrlen_combine -pg 1 -lvl 12 -x 4070 -y 680 -defaultsOSRD
+preplace inst mm2s_stsaddr_to_addrlen -pg 1 -lvl 13 -x 4390 -y 700 -defaultsOSRD
+preplace inst axis_broadcaster_1 -pg 1 -lvl 10 -x 3370 -y 600 -defaultsOSRD
+preplace inst mm2s_sts_widen -pg 1 -lvl 11 -x 3730 -y 510 -defaultsOSRD
+preplace inst pending_addr_fifo -pg 1 -lvl 2 -x 520 -y 770 -defaultsOSRD
+preplace inst nack_clock_converter -pg 1 -lvl 11 -x 3730 -y 700 -defaultsOSRD
+preplace inst axis_clock_converter_0 -pg 1 -lvl 13 -x 4390 -y 920 -defaultsOSRD
+preplace inst axis_gatekeeper_0 -pg 1 -lvl 10 -x 3370 -y 390 -defaultsOSRD
+preplace inst const_0 -pg 1 -lvl 1 -x 240 -y 380 -defaultsOSRD
+preplace inst const_1 -pg 1 -lvl 1 -x 240 -y 540 -defaultsOSRD
+preplace netloc ddr4_0_c0_ddr4_ui_clk 1 1 13 350 860 700 690 1020 600 1350 560 1700 560 2050 240 2440 430 2860 450 3200 480 3560 820 3910 780 4220 780 NJ
+preplace netloc rst_ddr4_0_300M_peripheral_aresetn 1 2 11 690 610 1040 610 1360 570 1710 570 2060 250 2400 270 2840 270 3180 520 3580 600 3900 770 4230J
+preplace netloc rst_ddr4_0_300M_bus_struct_reset 1 2 8 690 150 NJ 150 NJ 150 NJ 150 NJ 150 NJ 150 NJ 150 NJ
+preplace netloc c0_sys_clk_i_0_1 1 0 10 NJ 110 N 110 NJ 110 NJ 110 NJ 110 NJ 110 NJ 110 NJ 110 NJ 110 NJ
+preplace netloc aux_reset_in_0_1 1 0 2 NJ 460 N
+preplace netloc s_allow_0_1 1 0 10 -20J 310 340 230 NJ 230 NJ 230 NJ 230 NJ 230 NJ 230 NJ 230 NJ 230 3170J
+preplace netloc axis_gatekeeper_0_s_allow_count 1 10 4 NJ 400 NJ 400 NJ 400 NJ
+preplace netloc ddr4_0_c0_init_calib_complete 1 10 4 NJ 80 NJ 80 NJ 80 4540J
+preplace netloc rst_ddr4_0_300M_interconnect_aresetn 1 2 6 700 400 NJ 400 NJ 400 NJ 400 2070J 430 2420J
+preplace netloc s_aclk_0_1 1 0 13 N 780 330 880 N 880 N 880 N 880 1680 960 N 960 N 960 N 960 N 960 3580 960 N 960 N
+preplace netloc s_aresetn_0_1 1 0 13 N 810 340 680 N 680 1010 780 N 780 1690 950 N 950 N 950 2850 920 N 920 3570 920 N 920 N
+preplace netloc const_1 1 1 1 340 380n
+preplace netloc const_1_dout 1 1 1 340 500n
+preplace netloc sts_addrlenerr_split_M01_AXIS 1 6 1 2030 310n
+preplace netloc axis_broadcaster_0_M00_AXIS 1 6 4 2070 600 2390J 820 NJ 820 NJ
+preplace netloc s2mm_addrhighfifo_M_AXIS 1 5 1 1690 460n
+preplace netloc axis_subset_converter_0_M_AXIS1 1 6 1 2020 330n
+preplace netloc axi_datamover_0_M_AXI 1 8 1 2850 540n
+preplace netloc mm2s_addrlen_combine_M_AXIS 1 12 1 N 680
+preplace netloc axi_smc_M00_AXI 1 9 1 3160 90n
+preplace netloc axi_datamover_0_M_AXIS_MM2S 1 8 6 2830J 750 NJ 750 3550J 810 NJ 810 NJ 810 NJ
+preplace netloc axis_broadcaster_0_M01_AXIS 1 6 1 N 660
+preplace netloc addrlen_combine_M_AXIS 1 7 1 2390 330n
+preplace netloc s2mm_cmd_builder_M_AXIS 1 7 1 2430 510n
+preplace netloc stsaddr_to_ack_M_AXIS 1 8 1 2820 340n
+preplace netloc s2mm_cmd_broadcast_M01_AXIS 1 3 1 1030 670n
+preplace netloc axis_switch_0_M00_AXIS 1 5 1 1690 630n
+preplace netloc ddr4_0_C0_DDR4 1 10 4 NJ 60 NJ 60 NJ 60 NJ
+preplace netloc axis_subset_converter_0_M_AXIS 1 4 1 1340 460n
+preplace netloc axis_gatekeeper_0_m_axis 1 4 7 1380 940 NJ 940 NJ 940 NJ 940 NJ 940 NJ 940 3530
+preplace netloc s2mm_stat_strip_M_AXIS 1 10 4 NJ 840 3920J 820 NJ 820 4540J
+preplace netloc s2mm_cmd_broadcast_M00_AXIS 1 3 4 1000 770 NJ 770 1690J 730 2040J
+preplace netloc fifo_generator_0_M_AXIS 1 9 1 N 360
+preplace netloc axis_broadcaster_0_M00_AXIS1 1 6 1 2040 490n
+preplace netloc axi_datamover_0_M_AXIS_S2MM_STS 1 5 4 1720 920 NJ 920 NJ 920 2820
+preplace netloc fifo_generator_0_M_AXIS1 1 2 1 N 770
+preplace netloc addrlen_to_cmd_M_AXIS 1 7 1 2410 510n
+preplace netloc axis_clock_converter_0_M_AXIS1 1 13 1 N 920
+preplace netloc mm2s_addrlen_fifo_M_AXIS 1 7 5 2380J 770 NJ 770 3210J 760 3540J 800 3890
+preplace netloc mm2s_stsaddr_to_addrlen_M_AXIS 1 12 2 4240 790 4540
+preplace netloc axis_broadcaster_1_M00_AXIS 1 10 4 NJ 590 NJ 590 NJ 590 NJ
+preplace netloc S_AXIS_S2MM_0_1 1 0 8 -10J 320 340 360 NJ 360 NJ 360 NJ 360 NJ 360 2080J 590 2390J
+preplace netloc axis_broadcaster_1_M01_AXIS 1 10 1 3540 490n
+preplace netloc axi_datamover_0_M_AXIS_MM2S_STS 1 8 2 NJ 580 N
+preplace netloc s_ack_1 1 0 2 NJ 740 N
+preplace netloc mm2s_sts_widen_M_AXIS 1 11 1 3910 510n
+preplace netloc axis_clock_converter_0_M_AXIS 1 4 8 1370 930 NJ 930 NJ 930 NJ 930 NJ 930 NJ 930 NJ 930 3880
+preplace netloc s_nack_1 1 0 11 NJ 880 320 890 NJ 890 NJ 890 NJ 890 NJ 890 2080J 760 NJ 760 NJ 760 3190J 740 3540
+levelinfo -pg 1 -40 240 520 850 1190 1530 1870 2230 2630 3010 3370 3730 4070 4390 4560
+pagesize -pg 1 -db -bbox -sgen -160 0 4730 1190
+"
+}
+{
+   "da_axi4_cnt":"3",
+   "da_clkrst_cnt":"1"
+}
