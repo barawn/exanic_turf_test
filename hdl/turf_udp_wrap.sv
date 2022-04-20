@@ -207,6 +207,7 @@ module turf_udp_wrap #(parameter NSFP=2)(
     `DEFINE_AXI4S_IF( udpout_data_ , PAYLOAD_WIDTH);       
     
     // Its clock is clk156, its reset is clk156_rst.
+    wire [47:0] my_mac_address;
     turf_udp_core u_udp_core( .clk(clk156), .rst(clk156_rst),
         .sfp_tx_clk(sfp_tx_clk[0]),
         .sfp_tx_rst(sfp_tx_rst[0]),
@@ -216,6 +217,7 @@ module turf_udp_wrap #(parameter NSFP=2)(
         .sfp_rx_rst(sfp_rx_rst[0]),
         .sfp_rxd(sfp_rxd[0]),
         .sfp_rxc(sfp_rxc[0]),
+        .my_mac_address(my_mac_address),
         `CONNECT_AXI4S_MIN_IF( m_udphdr_ , udpin_hdr_ ),
         .m_udphdr_tdest( udpin_hdr_tdest ),
         `CONNECT_AXI4S_IF( m_udpdata_ , udpin_data_ ),
@@ -259,7 +261,7 @@ module turf_udp_wrap #(parameter NSFP=2)(
     wire [NUM_INBOUND*PAYLOAD_WIDTH-1:0] data_tdata;
     wire [NUM_INBOUND-1:0] data_tvalid;
     wire [NUM_INBOUND-1:0] data_tready;
-    wire [(PAYLOAD_WIDTH/8)-1:0] data_tkeep;
+    wire [NUM_INBOUND*(PAYLOAD_WIDTH/8)-1:0] data_tkeep;
     wire [NUM_INBOUND-1:0] data_tlast;
     
     wire [NUM_INBOUND-1:0] in_port_active;
@@ -271,6 +273,12 @@ module turf_udp_wrap #(parameter NSFP=2)(
         OUTBOUND = { 16'd21605, // Te port
                      INBOUND };
     localparam TW_PORT_VALUE = 16'd21623;        
+
+    // Event related stuff
+    wire [9:0]  num_fragment_qwords;
+    wire [31:0] event_ip;
+    wire [15:0] event_port;
+    wire        event_is_open;    
         
     wire [NUM_OUTBOUND*64-1:0] hdrout_tdata;
     wire [NUM_OUTBOUND-1:0]    hdrout_tvalid;
@@ -318,42 +326,63 @@ module turf_udp_wrap #(parameter NSFP=2)(
         assign dataout_tdata[PAYLOAD_WIDTH* idx  +: PAYLOAD_WIDTH] = {PAYLOAD_WIDTH{1'b0}};           \
         assign dataout_tkeep[(PAYLOAD_WIDTH/8)* idx  +: (PAYLOAD_WIDTH/8)] = {(PAYLOAD_WIDTH/8){1'b0}};   \
         assign dataout_tlast[ idx ] = 1'b0
+
+    // eff it, just macro things
+    `define CONNECT_UDP_INOUT( inhdr, indata, outhdr, outdata, port)    \
+        .``inhdr``tdata( hdr_tdata[(64 * port ) +: 64] ),   \
+        .``inhdr``tvalid( hdr_tvalid[ port ] ),             \
+        .``inhdr``tready( hdr_tready[ port ] ),             \
+        .``indata``tdata( data_tdata[(PAYLOAD_WIDTH * port ) +: PAYLOAD_WIDTH] ), \
+        .``indata``tkeep( data_tkeep[((PAYLOAD_WIDTH/8) * port ) +: (PAYLOAD_WIDTH/8)] ),   \
+        .``indata``tready( data_tready[ port ] ),   \
+        .``indata``tvalid( data_tvalid[ port ] ),   \
+        .``indata``tlast(  data_tlast[ port ] ),    \
+        .``outhdr``tdata( hdrout_tdata[(64 * port ) +: 64] ),   \
+        .``outhdr``tvalid( hdrout_tvalid[ port ] ),             \
+        .``outhdr``tready( hdrout_tready[ port ] ),             \
+        .``outdata``tdata( dataout_tdata[(PAYLOAD_WIDTH * port ) +: PAYLOAD_WIDTH] ), \
+        .``outdata``tkeep( dataout_tkeep[((PAYLOAD_WIDTH/8) * port ) +: (PAYLOAD_WIDTH/8)] ),   \
+        .``outdata``tready( dataout_tready[ port ] ),   \
+        .``outdata``tvalid( dataout_tvalid[ port ] ),   \
+        .``outdata``tlast(  dataout_tlast[ port ] )
+        
     
     `KILL_UDP_IN( TA_PORT );
     `KILL_UDP_IN( TN_PORT );
-    `KILL_UDP_IN( TC_PORT ); 
     
     `KILL_UDP_OUT( TA_PORT );
     `KILL_UDP_OUT( TN_PORT );
-    `KILL_UDP_OUT( TC_PORT );
     `KILL_UDP_OUT( TE_PORT );
+                        
             
     // now try the UDP RDWR core
     wire rdwr_tuser = (hdr_tdest[16*TRW_PORT +: 16] == INBOUND[TRW_PORT*16 +: 16]);
     wire rdwrout_tuser;
     assign hdrout_tuser[16*TRW_PORT +: 16] = (rdwrout_tuser) ? OUTBOUND[TRW_PORT*16 +: 16] : TW_PORT_VALUE;
     turf_udp_rdwr u_rdwr( .aclk(clk156),.aresetn(!clk156_rst),
-                          // I REALLY NEED ARRAY MACROS
-                          .s_hdr_tdata( hdr_tdata[64*TRW_PORT +: 64]),
-                          .s_hdr_tvalid(hdr_tvalid[TRW_PORT]),
-                          .s_hdr_tready(hdr_tready[TRW_PORT]),
-                          .s_hdr_tuser( rdwr_tuser),
-                          .s_payload_tdata( data_tdata[PAYLOAD_WIDTH*TRW_PORT +: PAYLOAD_WIDTH] ),
-                          .s_payload_tvalid(data_tvalid[TRW_PORT]),
-                          .s_payload_tready(data_tready[TRW_PORT]),
-                          .s_payload_tkeep(data_tkeep[(PAYLOAD_WIDTH/8)*TRW_PORT +: (PAYLOAD_WIDTH/8)]),
-                          .s_payload_tlast(data_tlast[TRW_PORT]),
+                          `CONNECT_UDP_INOUT( s_hdr_ , s_payload_ , m_hdr_ , m_payload_ , TRW_PORT ),
+                          .s_hdr_tuser( rdwr_tuser ),
+                          .m_hdr_tuser( rdwrout_tuser ),
+//                          .s_hdr_tdata( hdr_tdata[64*TRW_PORT +: 64]),
+//                          .s_hdr_tvalid(hdr_tvalid[TRW_PORT]),
+//                          .s_hdr_tready(hdr_tready[TRW_PORT]),
+//                          .s_hdr_tuser( rdwr_tuser),
+//                          .s_payload_tdata( data_tdata[PAYLOAD_WIDTH*TRW_PORT +: PAYLOAD_WIDTH] ),
+//                          .s_payload_tvalid(data_tvalid[TRW_PORT]),
+//                          .s_payload_tready(data_tready[TRW_PORT]),
+//                          .s_payload_tkeep(data_tkeep[(PAYLOAD_WIDTH/8)*TRW_PORT +: (PAYLOAD_WIDTH/8)]),
+//                          .s_payload_tlast(data_tlast[TRW_PORT]),
                                                     
-                          .m_hdr_tdata( hdrout_tdata[64*TRW_PORT +: 64]),
-                          .m_hdr_tvalid(hdrout_tvalid[TRW_PORT]),
-                          .m_hdr_tready(hdrout_tready[TRW_PORT]),
-                          .m_hdr_tuser(rdwrout_tuser),
+//                          .m_hdr_tdata( hdrout_tdata[64*TRW_PORT +: 64]),
+//                          .m_hdr_tvalid(hdrout_tvalid[TRW_PORT]),
+//                          .m_hdr_tready(hdrout_tready[TRW_PORT]),
+//                          .m_hdr_tuser(rdwrout_tuser),
                           
-                          .m_payload_tdata( dataout_tdata[PAYLOAD_WIDTH*TRW_PORT +: PAYLOAD_WIDTH] ),
-                          .m_payload_tvalid(dataout_tvalid[TRW_PORT]),
-                          .m_payload_tready(dataout_tready[TRW_PORT]),
-                          .m_payload_tkeep( dataout_tkeep[(PAYLOAD_WIDTH/8)*TRW_PORT +: (PAYLOAD_WIDTH/8)]),
-                          .m_payload_tlast(dataout_tlast[TRW_PORT]),
+//                          .m_payload_tdata( dataout_tdata[PAYLOAD_WIDTH*TRW_PORT +: PAYLOAD_WIDTH] ),
+//                          .m_payload_tvalid(dataout_tvalid[TRW_PORT]),
+//                          .m_payload_tready(dataout_tready[TRW_PORT]),
+//                          .m_payload_tkeep( dataout_tkeep[(PAYLOAD_WIDTH/8)*TRW_PORT +: (PAYLOAD_WIDTH/8)]),
+//                          .m_payload_tlast(dataout_tlast[TRW_PORT]),
                           
                           // and the interface
                           .en_o(en_o),
@@ -362,6 +391,17 @@ module turf_udp_wrap #(parameter NSFP=2)(
                           .dat_o(dat_o),
                           .dat_i(dat_i),
                           .ack_i(ack_i));                          
+
+    // Control port module always responds at its own port
+    assign hdrout_tuser[16*TC_PORT +: 16] = OUTBOUND[16*TC_PORT +: 16];
+    turf_event_ctrl_port #(.MAX_FRAGMENT_LEN(8095),.MAX_ADDR(4095))
+        u_ctrlport( .aclk(clk156),.aresetn(!clk156_rst),
+                    `CONNECT_UDP_INOUT( s_udphdr_ , s_udpdata_ , m_udphdr_ , m_udpdata_ , TC_PORT),
+                    .my_mac_address( my_mac_address ),
+                    .nfragment_count_o( num_fragment_qwords ),
+                    .event_ip_o( event_ip ),
+                    .event_port_o( event_port ),
+                    .event_open_o( event_is_open ));
 
     wire [NUM_OUTBOUND-1:0] out_port_active;
     udp_port_mux #(.NUM_PORT(NUM_OUTBOUND),
@@ -396,5 +436,10 @@ module turf_udp_wrap #(parameter NSFP=2)(
                              .probe5( udpout_data_tready ),
                              .probe6( udpout_data_tlast ),
                              .probe7( udpout_hdr_tdata[0 +: 15] ));
+
+    event_ctrl_vio u_evctrlvio( .clk(clk156),
+                                .probe_in0( event_ip ),
+                                .probe_in1( event_port ),
+                                .probe_in2( event_is_open ));
 
 endmodule
