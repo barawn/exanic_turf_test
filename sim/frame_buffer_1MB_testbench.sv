@@ -250,6 +250,11 @@ module frame_buffer_1MB_testbench;
         @(posedge ddr_clk);
         #10; fast_rst <= 1'b0;
         
+        // Coming out of reset needs time:
+        // this is handled in application by the
+        // turf_event_ctrl_port directly.
+        #500000;
+        
         // prep ack.
         // Allow for 4 events.
         write_ack( 0, 0);
