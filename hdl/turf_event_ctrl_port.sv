@@ -76,7 +76,7 @@ module turf_event_ctrl_port #(
     SRLC32E u_delayline(.D(cur_val),
                         .A(HOLDOFF_DELAY),
                         .CE(1'b1),
-                        .C(aclk),
+                        .CLK(aclk),
                         .Q(delay_val));
     wire holdoff_done = (delay_val == cur_val);                        
     
