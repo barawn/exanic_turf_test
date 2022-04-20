@@ -1,8 +1,8 @@
 //Copyright 1986-2019 Xilinx, Inc. All Rights Reserved.
 //--------------------------------------------------------------------------------
 //Tool Version: Vivado v.2019.2 (win64) Build 2708876 Wed Nov  6 21:40:23 MST 2019
-//Date        : Tue Apr 19 11:56:42 2022
-//Host        : PHY-NC121402 running 64-bit major release  (build 9200)
+//Date        : Wed Apr 20 01:10:51 2022
+//Host        : DESKTOP-ELJAE7D running 64-bit major release  (build 9200)
 //Command     : generate_target frame_buffer_1MB_wrapper.bd
 //Design      : frame_buffer_1MB_wrapper
 //Purpose     : IP block netlist
@@ -62,7 +62,8 @@ module frame_buffer_1MB_wrapper
     s_ddrev_tvalid,
     s_nack_tdata,
     s_nack_tready,
-    s_nack_tvalid);
+    s_nack_tvalid,
+    sys_rst);
   input aclk;
   output [8:0]allow_count_o;
   input allow_i;
@@ -116,6 +117,7 @@ module frame_buffer_1MB_wrapper
   input [31:0]s_nack_tdata;
   output s_nack_tready;
   input s_nack_tvalid;
+  input sys_rst;
 
   wire aclk;
   wire [8:0]allow_count_o;
@@ -170,6 +172,7 @@ module frame_buffer_1MB_wrapper
   wire [31:0]s_nack_tdata;
   wire s_nack_tready;
   wire s_nack_tvalid;
+  wire sys_rst;
 
   frame_buffer_1MB frame_buffer_1MB_i
        (.aclk(aclk),
@@ -224,5 +227,6 @@ module frame_buffer_1MB_wrapper
         .s_ddrev_tvalid(s_ddrev_tvalid),
         .s_nack_tdata(s_nack_tdata),
         .s_nack_tready(s_nack_tready),
-        .s_nack_tvalid(s_nack_tvalid));
+        .s_nack_tvalid(s_nack_tvalid),
+        .sys_rst(sys_rst));
 endmodule

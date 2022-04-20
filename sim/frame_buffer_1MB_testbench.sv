@@ -8,12 +8,14 @@ module frame_buffer_1MB_testbench;
     reg aresetn = 1'b0;  
     tb_rclk #(.PERIOD(10.0)) u_aclk(.clk(aclk));
 
+    reg fast_rst = 0;
 
     reg sys_clk_i;
     // diff buffer outside the module
 //    wire c0_sys_clk_p;
 //    wire c0_sys_clk_n;
     reg sys_rst;
+        
     bit en_model;
     
 
@@ -191,10 +193,16 @@ module frame_buffer_1MB_testbench;
    endtask
     
   
+  // We split off sys_rst and the aresetn for ddr-side (fast_rst).
+  // We only let sys_rst happen once, but whenever we close the stream
+  // port, we hold aclk/ddr_clk sides in reset.
+  //
+  //
   frame_buffer_1MB_wrapper u_buf(
     .aclk(aclk),
     .aresetn(aresetn),
-    .reset_i(sys_rst),
+    .sys_rst(sys_rst),
+    .reset_i(fast_rst),
     .allow_i(allow_ddrclk),
     .allow_count_o(allow_count),
     .ddr_act_n(ddr_act_n),
@@ -231,6 +239,17 @@ module frame_buffer_1MB_testbench;
     
     initial begin
         #20000000;
+        
+        @(posedge ddr_clk);
+        #10; fast_rst <= 1'b1;
+        @(posedge aclk);
+        #10; aresetn <= 1'b0;
+        #100000;
+        @(posedge aclk);
+        #10; aresetn <= 1'b1;
+        @(posedge ddr_clk);
+        #10; fast_rst <= 1'b0;
+        
         // prep ack.
         // Allow for 4 events.
         write_ack( 0, 0);
