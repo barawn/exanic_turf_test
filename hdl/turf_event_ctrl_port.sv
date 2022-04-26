@@ -59,6 +59,8 @@ module turf_event_ctrl_port #(
     
     reg [31:0] dest_ip = {32{1'b0}};
     reg [15:0] dest_port = {16{1'b0}};
+    // always 16
+    wire [15:0] this_length = 16'd16;
     
     reg [31:0] event_ip = {32{1'b0}};
     reg [15:0] event_port = {16{1'b0}};
@@ -112,6 +114,12 @@ module turf_event_ctrl_port #(
                 if (s_udpdata_tdata[0 +: 15] <= MAX_FRAGMENT_LEN) nfragment <= s_udpdata_tdata[ 3+: 10];
         end
     
+        // capture IP/port
+        if (state == IDLE && s_udphdr_tvalid) begin
+            dest_ip <= s_udphdr_tdata[32 +: 32];
+            dest_port <= s_udphdr_tdata[16 +: 16];
+        end
+    
         // toggle if we need to wait.
         if (state == PARSE_COMMAND && (|(cmd_match & needs_holdoff))) cur_val <= ~cur_val;    
         if (!aresetn) state <= IDLE;
@@ -137,9 +145,15 @@ module turf_event_ctrl_port #(
     
     assign s_udphdr_tready = (state == IDLE);
     assign s_udpdata_tready = (state == DUMP);
+    
     assign m_udphdr_tvalid = (state == WRITE_HEADER);
+    assign m_udphdr_tdata = { dest_ip, dest_port, this_length };
+    
     assign m_udpdata_tvalid = (state == WRITE_PAYLOAD);
-
+    assign m_udpdata_tdata = response;
+    assign m_udpdata_tkeep = 8'hFF;
+    assign m_udpdata_tlast = 1'b1;
+    
     assign nfragment_count_o = nfragment;
     assign event_ip_o = event_ip;
     assign event_port_o = event_port;
