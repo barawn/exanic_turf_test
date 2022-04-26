@@ -8,6 +8,18 @@ This repository uses a combination of other modules to work:
 1. alexforencich's verilog-ethernet module for the 10GbE interface to UDP
 2. xillybus's PCIe interface for setup/control
 
+# Initial Setup
+
+1. Make sure you have Vivado_init.tcl set up as mentioned at http://github.com/barawn/verilog-library-barawn/
+2. Obviously make sure you do a recursive clone to pick up the extra submodules.
+3. Clone https://github.com/barawn/vivado_custom_ip somewhere.
+4. Create a file "barawn_repository" in the project directory (the top of the github repo) containing the directory where that IP repository is.
+5. Open Vivado
+6. In the Tcl console, go to the cloned repository
+7. Source (project name).tcl
+8. After it completes without error (*), close the project.
+9. Under the cloned repository directory, rename the "project name" folder to "vivado_project" (unless it already is, I can't figure out why it happens)
+
 # UDP interface
 
 The UDP interface mechanism is fairly straightforward. Note that all responses (either control or
