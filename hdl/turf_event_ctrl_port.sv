@@ -90,17 +90,19 @@ module turf_event_ctrl_port #(
     localparam [FSM_BITS-1:0] UPDATE_RESPONSE = 4;
     localparam [FSM_BITS-1:0] WRITE_HEADER = 5;
     localparam [FSM_BITS-1:0] WRITE_PAYLOAD = 6;
-    localparam [FSM_BITS-1:0] DUMP = 6;
+    localparam [FSM_BITS-1:0] DUMP = 7;
     reg [FSM_BITS-1:0] state = IDLE;
             
     always @(posedge aclk) begin
+        // Commands that need responses special case here, the default is always
+        // "whatever you sent me before"
         if (state == UPDATE_RESPONSE) begin
-            if (cmd_match[OP_CMD] || cmd_match[CL_CMD])
-                response <= s_udpdata_tdata;
-            else if (cmd_match[ID_CMD])
-                response <= { s_udpdata_tdata[48 +: 16], my_mac_address };
+            if (cmd_match[ID_CMD])
+                response <= { my_mac_address, s_udpdata_tdata[0 +: 16] };
             else if (cmd_match[PR_CMD] || cmd_match[PW_CMD])
-                response <= { s_udpdata_tdata[48 +: 16], MAX_FRAGMENT_LEN, MAX_ADDR, nfragment_as_bytes };
+                response <= { MAX_FRAGMENT_LEN, MAX_ADDR, nfragment_as_bytes, s_udpdata_tdata[0 +: 16] };
+            else
+                response <= s_udpdata_tdata;
         end
         
         if (state == PARSE_COMMAND) begin
@@ -132,8 +134,8 @@ module turf_event_ctrl_port #(
                     end else state <= DUMP;
                 end
                 PARSE_COMMAND:
-                    if (|(cmd_match & needs_holdoff)) state <= UPDATE_RESPONSE; 
-                    else state <= WRITE_HEADER;
+                    if (|(cmd_match & needs_holdoff)) state <= HOLDOFF; 
+                    else state <= UPDATE_RESPONSE;
                 HOLDOFF: if (holdoff_done) state <= UPDATE_RESPONSE;
                 UPDATE_RESPONSE: state <= WRITE_HEADER;
                 WRITE_HEADER: if (m_udphdr_tready) state <= WRITE_PAYLOAD;
@@ -142,6 +144,18 @@ module turf_event_ctrl_port #(
             endcase
         end
     end
+    
+    event_ctrl_ila u_ila(.clk(aclk),
+                         .probe0( s_udphdr_tvalid ),
+                         .probe1( s_udphdr_tready ),
+                         .probe2( s_udpdata_tvalid ),
+                         .probe3( s_udpdata_tready ),
+                         .probe4( m_udphdr_tvalid ),
+                         .probe5( m_udphdr_tready ),
+                         .probe6( m_udpdata_tvalid ),
+                         .probe7( m_udpdata_tready ),
+                         .probe8( state ),
+                         .probe9( m_udpdata_tdata ));
     
     assign s_udphdr_tready = (state == IDLE);
     assign s_udpdata_tready = (state == DUMP);
