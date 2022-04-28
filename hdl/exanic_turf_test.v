@@ -94,7 +94,7 @@ module exanic_turf_test(
     parameter [31:0] IDENT = "TURF";
     parameter [3:0] VER_MAJOR = 0;
     parameter [3:0] VER_MINOR = 0;
-    parameter [7:0] VER_REV = 1;
+    parameter [7:0] VER_REV = 2;
     localparam [15:0] FIRMWARE_VERSION = { VER_MAJOR, VER_MINOR, VER_REV };
     parameter [15:0] FIRMWARE_DATE = {16{1'b0}};
     localparam [31:0] DATEVERSION = { FIRMWARE_DATE, FIRMWARE_VERSION };
