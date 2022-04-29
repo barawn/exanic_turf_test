@@ -13,6 +13,11 @@
 // and tuser[1] is set.
 // tuser[3:2] indicate if the [high:low] 32 bits are valid
 // tuser[0] indicates a read port match (when tuser[1] is set) or all-zero low 32-bits (when not)
+//
+// The data path matches the TURF ICD v0.2
+// reads [31:0] tag/addr
+// writes[31:0] tag/addr
+// writes[63:32] data
 module turf_udp_rdwr(
         input aclk,
         input aresetn,
@@ -100,10 +105,13 @@ module turf_udp_rdwr(
                        .m_axis_tuser( fifo_out_tuser ),
                        .m_axis_tlast( fifo_out_tlast ));
     
-    // This is the read packet loss check. It stores the first 32-bits out of the FIFO
-    reg [31:0] last_read = {32{1'b0}};
-    // This is a temp register for the 64-bit response
-    reg [63:0] read_response = {64{1'b0}};
+    // First read from the last packet
+    reg [31:0] last_first_read = {32{1'b0}};
+
+    // Holds the address and tag
+    reg [31:0] adr_tag_reg = {32{1'b0}};    
+    // This is a temp register for the 64-bit response (and holding for the address)
+    reg [31:0] read_data = {32{1'b0}};
     // This is the write response as well as the packet loss check.
     reg [31:0] write_response = {32{1'b0}};
 
@@ -116,9 +124,7 @@ module turf_udp_rdwr(
     reg [47:0] response_ipport = {48{1'b0}};
 
     // this just simplifies things
-    reg en_reg = 0;
-    reg [31:0] adr_tag_reg = {32{1'b0}};
-    
+    reg en_reg = 0;    
     
     
     // ok, now we state machine the thing
@@ -193,15 +199,14 @@ module turf_udp_rdwr(
         else if (state == IDLE) user_last <= 1'b0;
         
         // WRITE_CHECK only occurs on the first one.
-        if (state == WRITE_CHECK && fifo_out_tvalid && fifo_out_tuser[3:2] == 2'b11) write_response <= fifo_out_tdata[32 +: 32];
+        if (state == WRITE_CHECK && fifo_out_tvalid && fifo_out_tuser[3:2] == 2'b11) write_response <= fifo_out_tdata[0 +: 32];
         // READ_0_CHECK only happens on the first one. We grab the low 32-bits because it's a 32-bit object.
-        if (state == READ_0_CHECK && fifo_out_tvalid && fifo_out_tuser[2]) last_read <= fifo_out_tdata[0 +: 32];
+        if (state == READ_0_CHECK && fifo_out_tvalid && fifo_out_tuser[2]) last_first_read <= fifo_out_tdata[0 +: 32];
 
-        // state == READ_0_RESP should kinda have a fifo_out_tuser[3] check here...
-        // except if it's not set, we go to DUMP_CHECK_RESP and adr_tag_reg is pointless anyway.                
+        // Logic for grabbing the address.
         if (fifo_out_tvalid) begin
-            if (state == READ_0 || state == READ_0_CHECK) adr_tag_reg <= fifo_out_tdata[0 +: 32];
-            else if (state == WRITE_CHECK || state == WRITE || state == READ_0_RESP) adr_tag_reg <= fifo_out_tdata[32 +: 32];
+            if (state == READ_0 || state == READ_0_CHECK || state == WRITE_CHECK || state == WRITE) adr_tag_reg <= fifo_out_tdata[0 +: 32];
+            else if (state == READ_0_RESP && fifo_out_tuser[3]) adr_tag_reg <= fifo_out_tdata[32 +: 32];
         end                
         
         // we super-cheat on the enable reg, we don't care about the extra clock delay
@@ -209,9 +214,9 @@ module turf_udp_rdwr(
         else if (state == READ_0_ACK || state == READ_1_ACK || state == WRITE_ACK) en_reg <= 1'b1;        
         
         if ((state == READ_0_ACK || state == READ_1_ACK) && ack_i) begin
-            read_response[32 +: 32] <= (state == READ_0_ACK) ? fifo_out_tdata[0 +: 32] :
-                                                               fifo_out_tdata[32 +: 32];
-            read_response[0 +: 32] <= dat_i;
+//            read_response[32 +: 32] <= (state == READ_0_ACK) ? fifo_out_tdata[0 +: 32] :
+//                                                               fifo_out_tdata[32 +: 32];
+            read_data[0 +: 32] <= dat_i;
         end                                                                  
         
         if (!aresetn) state <= IDLE;
@@ -226,7 +231,7 @@ module turf_udp_rdwr(
                 READ_0_CHECK: if (fifo_out_tvalid) begin
                     if (fifo_out_tuser[2]) begin
                         // packet loss guard
-                        if (!fifo_out_tuser[0] && fifo_out_tdata[31:0] == read_response[63:32] && last_read_valid) state <= READ_SKIP;
+                        if (!fifo_out_tuser[0] && fifo_out_tdata[31:0] == last_first_read && last_read_valid) state <= READ_SKIP;
                         else state <= READ_0_ACK;
                     // DUMP just goes through all data until TLAST and then
                     // pushes out a response if there was any data written
@@ -279,7 +284,7 @@ module turf_udp_rdwr(
                 WRITE_CHECK: begin
                     if (fifo_out_tvalid) begin
                         if (fifo_out_tuser[3:2] == 2'b11) begin
-                            if (fifo_out_tdata[32 +: 32] == write_response && last_write_valid) state <= WRITE_RESP;
+                            if (fifo_out_tdata[0 +: 32] == write_response && last_write_valid) state <= WRITE_RESP;
                             else state <= WRITE_ACK;
                         end else state <= DUMP_CHECK_RESP;
                     end
@@ -333,9 +338,12 @@ module turf_udp_rdwr(
     end
 
     // outbound payload. user_tlast happens when we have to peek ahead.
+    // read_response 
     assign payload_out_tlast = user_last || (state == READ_SKIP) || (state == WRITE_RESP) || (state == READ_0_RESP && !fifo_out_tuser[3]);
-    assign payload_out_tdata[63:32] = (state == WRITE_RESP) ? write_response : read_response[63:32];
-    assign payload_out_tdata[31:0] = read_response[31:0];
+    // When we're in READ_SKIP, this needs to be the last read. Otherwise it's ALWAYS the adr_tag register.
+    // Even if we do a write skip, the adr_tag_reg gets updated (to the exact same thing).
+    assign payload_out_tdata[0 +: 32] = (state == READ_SKIP) ? last_first_read : adr_tag_reg;
+    assign payload_out_tdata[32 +: 32] = read_data[31:0];
     assign payload_out_tvalid = (state == READ_0_RESP || state == READ_1_RESP || state == WRITE_RESP || state == READ_SKIP);
     
     // pass through FIFO (64 bits+tlast)
@@ -356,8 +364,8 @@ module turf_udp_rdwr(
     assign en_o = en_reg;
     assign adr_o = adr_tag_reg[0 +: 28];
     assign wr_o = (state == WRITE_ACK);
-    // data output is always the low bits
-    assign dat_o = fifo_out_tdata[0 +: 32];
+    // data output is always the high bits
+    assign dat_o = fifo_out_tdata[32 +: 32];
 
     generate
         if (DEBUG == "TRUE") begin : ILA
