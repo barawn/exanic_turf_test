@@ -290,11 +290,12 @@ module exanic_turf_test(
     wire [31:0] ctrl_reg;
     wire [31:0] stat_reg = {32{1'b0}};
     turf_register_core #(.IDENT(IDENT),.DATEVERSION(DATEVERSION))
-        u_registers( .clk(clk),
+        u_registers( .clk(ifclk),
                      .rst(1'b0),
                      .en_i(en),
                      .wr_i(wr),
                      .ack_o(ack),
+                     .adr_i(adr),
                      .dat_o(dat_in),
                      .dat_i(dat_out),
                      .ctrl_o(ctrl_reg),
