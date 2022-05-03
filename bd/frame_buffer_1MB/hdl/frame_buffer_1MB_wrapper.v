@@ -1,8 +1,8 @@
 //Copyright 1986-2019 Xilinx, Inc. All Rights Reserved.
 //--------------------------------------------------------------------------------
 //Tool Version: Vivado v.2019.2 (win64) Build 2708876 Wed Nov  6 21:40:23 MST 2019
-//Date        : Wed Apr 20 01:10:51 2022
-//Host        : DESKTOP-ELJAE7D running 64-bit major release  (build 9200)
+//Date        : Wed Apr 20 09:21:03 2022
+//Host        : PHY-NC121402 running 64-bit major release  (build 9200)
 //Command     : generate_target frame_buffer_1MB_wrapper.bd
 //Design      : frame_buffer_1MB_wrapper
 //Purpose     : IP block netlist

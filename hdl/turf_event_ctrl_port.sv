@@ -9,6 +9,7 @@ module turf_event_ctrl_port #(
         parameter MAX_FRAGMENT_LEN=8095,
         // maximum address value
         parameter MAX_ADDR = 4095,
+        parameter MAX_FRAGSRCMASK = 6,
         // holdoff in clock cycles
         parameter [4:0] HOLDOFF_DELAY = 31
         )
@@ -24,11 +25,14 @@ module turf_event_ctrl_port #(
         input [47:0] my_mac_address,
         // Fragment length (in uint64_t's)
         output [9:0] nfragment_count_o,
+        // Fragment source mask
+        output [15:0] fragsrc_mask_o,
         output [31:0] event_ip_o,
         output [15:0] event_port_o,
         output        event_open_o
     );
-    
+    localparam [15:0] MAX_FRAGSRCMASK_BITS = { {(16-MAX_FRAGSRCMASK){1'b0}}, {MAX_FRAGSRCMASK{1'b1}} };
+
     localparam NUM_CMDS = 5;
     localparam [16*NUM_CMDS-1:0] CMD_TABLE =
         { "PW",
@@ -72,6 +76,8 @@ module turf_event_ctrl_port #(
     reg [9:0] nfragment = 10'd127;
     wire [15:0] nfragment_as_bytes = { 3'b000, nfragment, 3'b000 };
     
+    reg [MAX_FRAGSRCMASK-1:0] fragsrc_mask = {MAX_FRAGSRCMASK{1'b0}};
+
     // dumbass holdoff
     reg cur_val = 0;
     wire delay_val;
@@ -90,19 +96,19 @@ module turf_event_ctrl_port #(
     localparam [FSM_BITS-1:0] UPDATE_RESPONSE = 4;
     localparam [FSM_BITS-1:0] WRITE_HEADER = 5;
     localparam [FSM_BITS-1:0] WRITE_PAYLOAD = 6;
-    localparam [FSM_BITS-1:0] DUMP = 7;
+    localparam [FSM_BITS-1:0] DUMP = 6;
     reg [FSM_BITS-1:0] state = IDLE;
             
     always @(posedge aclk) begin
-        // Commands that need responses special case here, the default is always
-        // "whatever you sent me before"
         if (state == UPDATE_RESPONSE) begin
-            if (cmd_match[ID_CMD])
-                response <= { my_mac_address, s_udpdata_tdata[0 +: 16] };
-            else if (cmd_match[PR_CMD] || cmd_match[PW_CMD])
-                response <= { MAX_FRAGMENT_LEN, MAX_ADDR, nfragment_as_bytes, s_udpdata_tdata[0 +: 16] };
-            else
+            if (cmd_match[OP_CMD] || cmd_match[CL_CMD])
                 response <= s_udpdata_tdata;
+            else if (cmd_match[ID_CMD])
+                response <= { s_udpdata_tdata[48 +: 16], my_mac_address };
+            else if (cmd_match[PR_CMD])
+                response <= { s_udpdata_tdata[48 +: 16], MAX_FRAGMENT_LEN, MAX_ADDR, MAX_FRAGSRCMASK_BITS };
+            else if (cmd_match[PW_CMD])
+                response <= { s_udpdata_tdata[48 +: 16], nfragment_as_bytes, MAX_ADDR, fragsrc_mask_o };
         end
         
         if (state == PARSE_COMMAND) begin
@@ -112,8 +118,11 @@ module turf_event_ctrl_port #(
                 event_port <= s_udpdata_tdata[0 +: 16];
             end else if (cmd_match[CL_CMD])
                 event_is_open <= 1'b0;
-            if (cmd_match[PW_CMD])
-                if (s_udpdata_tdata[0 +: 15] <= MAX_FRAGMENT_LEN) nfragment <= s_udpdata_tdata[ 3+: 10];
+            
+            if (cmd_match[PW_CMD] && !event_is_open) begin
+                if (s_udpdata_tdata[32 +: 16] <= MAX_FRAGMENT_LEN) nfragment <= s_udpdata_tdata[ 3+: 10];
+                fragsrc_mask <= s_udpdata_tdata[0 +: MAX_FRAGSRCMASK];
+            end
         end
     
         // capture IP/port
@@ -134,8 +143,8 @@ module turf_event_ctrl_port #(
                     end else state <= DUMP;
                 end
                 PARSE_COMMAND:
-                    if (|(cmd_match & needs_holdoff)) state <= HOLDOFF; 
-                    else state <= UPDATE_RESPONSE;
+                    if (|(cmd_match & needs_holdoff)) state <= UPDATE_RESPONSE; 
+                    else state <= WRITE_HEADER;
                 HOLDOFF: if (holdoff_done) state <= UPDATE_RESPONSE;
                 UPDATE_RESPONSE: state <= WRITE_HEADER;
                 WRITE_HEADER: if (m_udphdr_tready) state <= WRITE_PAYLOAD;
@@ -144,18 +153,6 @@ module turf_event_ctrl_port #(
             endcase
         end
     end
-    
-    event_ctrl_ila u_ila(.clk(aclk),
-                         .probe0( s_udphdr_tvalid ),
-                         .probe1( s_udphdr_tready ),
-                         .probe2( s_udpdata_tvalid ),
-                         .probe3( s_udpdata_tready ),
-                         .probe4( m_udphdr_tvalid ),
-                         .probe5( m_udphdr_tready ),
-                         .probe6( m_udpdata_tvalid ),
-                         .probe7( m_udpdata_tready ),
-                         .probe8( state ),
-                         .probe9( m_udpdata_tdata ));
     
     assign s_udphdr_tready = (state == IDLE);
     assign s_udpdata_tready = (state == DUMP);
@@ -172,5 +169,9 @@ module turf_event_ctrl_port #(
     assign event_ip_o = event_ip;
     assign event_port_o = event_port;
     assign event_open_o = event_is_open;
+    
+    assign fragsrc_mask_o[MAX_FRAGSRCMASK-1:0] = fragsrc_mask;
+    assign fragsrc_mask_o[15:MAX_FRAGSRCMASK] = {(16-MAX_FRAGSRCMASK){1'b0}};
+
     
 endmodule

@@ -17,6 +17,8 @@ module turf_axis_rdwr(
         input [31:0] dat_i,
         output [31:0] dat_o
     );
+
+    parameter DEBUG = "TRUE";
     
     localparam FSM_BITS = 3;
     localparam [FSM_BITS-1:0] IDLE = 0;
@@ -54,6 +56,19 @@ module turf_axis_rdwr(
         if (state == IDLE && s_axis_tvalid) reg_store <= s_axis_tdata;
         else if (state == READ_ACK && ack_i) reg_store <= dat_i;
     end
+    
+    generate
+        if (DEBUG == "TRUE") begin : ILA
+            wire [31:0] this_data = (m_axis_tvalid) ? m_axis_tdata : s_axis_tdata;
+            axis_rdwr_ila u_ila(.clk(aclk),
+                                .probe0( s_axis_tvalid ),
+                                .probe1( s_axis_tready ),
+                                .probe2( m_axis_tvalid ),
+                                .probe3( m_axis_tready ),
+                                .probe4( this_data ),
+                                .probe5( state ));
+        end
+    endgenerate
     
     assign s_axis_tready = ( ack_i && (state == READ_ACK || state == WRITE_ACK) ) ||
                             (state == WRITE_GET_DATA);

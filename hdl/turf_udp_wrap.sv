@@ -442,4 +442,7 @@ module turf_udp_wrap #(parameter NSFP=2)(
                                 .probe_in1( event_port ),
                                 .probe_in2( event_is_open ));
 
+    // interface runs at Ethernet speed
+    assign clk_o = clk156;
+    
 endmodule

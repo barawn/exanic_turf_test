@@ -16,8 +16,8 @@ module turf_register_core(
         
     );
 
-    // Address space partitioning happens later
-    
+    // We'll do address space partitioning later.
+    // For that we want brains, I think.
     parameter [31:0] IDENT = {32{1'b0}};
     parameter [31:0] DATEVERSION = {32{1'b0}};;
 
