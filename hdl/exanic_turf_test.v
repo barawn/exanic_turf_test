@@ -92,10 +92,10 @@ module exanic_turf_test(
     input pcie_reset_n
 );
 
-    parameter [31:0] IDENT = "TURF";
+    parameter [31:0] IDENT = "TFSM";
     parameter [3:0] VER_MAJOR = 0;
     parameter [3:0] VER_MINOR = 0;
-    parameter [7:0] VER_REV = 3;
+    parameter [7:0] VER_REV = 4;
     localparam [15:0] FIRMWARE_VERSION = { VER_MAJOR, VER_MINOR, VER_REV };
     parameter [15:0] FIRMWARE_DATE = {16{1'b0}};
     localparam [31:0] DATEVERSION = { FIRMWARE_DATE, FIRMWARE_VERSION };
