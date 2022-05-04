@@ -149,6 +149,11 @@ set_clock_groups -name async1 -asynchronous -group [get_clocks {pcie_mgt_refclk}
 set_clock_groups -name async2 -asynchronous -group [get_clocks {pcie_mgt_refclk}] \
     -group [get_clocks -of_objects [get_pins -hierarchical -filter { NAME =~ *gen_channel_container[*].*gen_gtye4_channel_inst[*].GTYE4_CHANNEL_PRIM_INST/TXOUTCLK}]]
 
+set gbeclk [get_clocks -of_objects [get_pins u_xilrst/u_delay/CLK ] ]
+set xilclk [get_clocks -of_objects [get_pins u_xilrst/u_xildelay/CLK ] ]
+
+set_max_delay -datapath_only -from [get_clocks $gbeclk] -to [get_clocks $xilclk] 10.00
+set_max_delay -datapath_only -from [get_clocks $xilclk] -to [get_clocks $gbeclk] 10.00
 
 # BPI flash
 #set_property -dict {LOC AF20 IOSTANDARD LVCMOS18 DRIVE 12} [get_ports {flash_dq[0]}]
