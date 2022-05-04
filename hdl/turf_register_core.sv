@@ -37,5 +37,5 @@ module turf_register_core(
     end
     
     assign dat_o = ctrl_registers[adr_i[1:0]];        
-    assign ack_o = ctrl_
+    assign ack_o = ctrl_ack;
 endmodule
