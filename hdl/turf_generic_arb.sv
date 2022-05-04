@@ -34,6 +34,6 @@ module turf_generic_arb( input clk,
                         s_adr_i[28 +: 28] :
                         s_adr_i[0 +: 28];
     assign m_dat_o = (grant_encoded) ?
-                        s_dat_i[28 +: 28] :
-                        s_dat_i[0 +: 28];
+                        s_dat_i[32 +: 32] :
+                        s_dat_i[0 +: 32];
 endmodule
