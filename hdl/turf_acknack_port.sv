@@ -21,7 +21,7 @@ module turf_acknack_port #(
         `TARGET_NAMED_PORTS_AXI4S_MIN_IF( s_udphdr_ , 64 ),
         `TARGET_NAMED_PORTS_AXI4S_IF( s_udpdata_ , 64 ),
         `HOST_NAMED_PORTS_AXI4S_MIN_IF( m_udphdr_ , 64),
-        `HOST_NAMED_PORTS_AXI4S_MIN_IF( m_udpdata_ , 64),
+        `HOST_NAMED_PORTS_AXI4S_IF( m_udpdata_ , 64),
         // generate acks.
         // here tdata[15] is allow, and tdata[0 +: 12] are addr
         // this matches the frame buffer
