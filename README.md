@@ -54,7 +54,8 @@ The TURF has 5 total open inbound ports. They are all 2-byte ASCII combinations 
 * 'Ta' port - receives fragment acks
 * 'Tn' port - receives fragment nacks
 
-In addition, the 'Te' port is used as the source port for outgoing fragments.
+In addition, a range of ports (0x5400-0x543F) are used as the source port for fragments. The ports used are
+configurable - by default, only 'T0' (0x5430) is used. 
 
 ## Control path
 
@@ -106,59 +107,14 @@ The event path consists of 3 "incoming" ports, 'Tc', 'Ta', 'Tn', and an outgoing
 When the event path is opened by sending an open command to 'Tc', event fragments are sent out (after being set up, see below, and
 in programmable MTU sizes) from the 'Te' port to the destination port specified by the open command.
 
-Event fragments consist of a single 64-bit header, consisting of a 22-bit constant identifier (with the top bit **always** set), 
-a 10-bit incrementing fragment number, a 12-bit tag (bits 31-20) and a 20-bit length (bits 19-0) allowing for full event sizes 
-up to 1 MB, followed by the fragment data (up to the MTU size). The reason for making the header 64-bits is just that the 
+Event fragments consist of a single 64-bit header. The reason for making the header 64-bits is just that the 
 UDP datapath is 64 bits overall. 
-
-A union/bitfield representation of the header would be
-```
-typedef union {
-   struct {
-      uint64_t ident:22;
-      uint64_t fragment:10;
-      uint64_t addr:12;
-      uint64_t total:20;
-   } BITS;
-   uint64_t RAW;
-} turf_fragment_header_t;
-```
 
 Once an event is complete and received correctly, an ack must be sent to the 'Ta' port. If an event is *not* 
 received correctly, a nack must be sent to the 'Tn' port which will retransmit the event.
 
 Both the 'ack' and 'nack' structures are designed so the turf_fragment_header_t can be grabbed from any fragment
 and used to form it. However a portion of the 'fragment' field is repurposed as a tag and other fields are ignored.
-
-```
-typedef union {
-  struct {
-     uint64_t allow:1;
-     uint64_t unused0:23;
-     uint64_t tag:8;
-     uint64_t addr:12;
-     uint64_t unused1:20;
-  } BITS;
-  uint64_t RAW;
-} turf_ack_t;
-
-typedef union {
-  struct {
-    uint64_t unused0:24;
-    uint64_t tag:8;
-    uint64_t addr:12;
-    uint64_t length:20;
-  } BITS;
-  uint64_t RAW;
-} turf_nack_t;
-```
-
-The 'unused' fields here are completely unused and can be left as they were from the turf_fragment_t. That is, a turf_ack_t/nack_t
-can be filled from a turf_fragment_t directly. 
-
-The 'allow' field in the 'ack' indicates that another event is allowed to stream.
-Note that because the constant identifier always has the top bit set (and the exact value of 'tag' isn't important for 'Ta') during
-normal operation the turf_fragment_t header from any frame can just be sent directly to the 'Ta' port and it will work.
 
 Note that if *none* of the fragments for an event are received, then the tag can be sent with the maximum event size to read out
 the event (although extraneous data will be transmitted past the end).  Since most events will consist of many fragments, this is unlikely.
@@ -168,6 +124,8 @@ Once an open command is sent to 'Tc', the event path must be prepared before dat
 if 256 MB is available for event buffering, then 256 tags must be sent to the 'Ta' port after opening. In this initialization, the "allow"
 field should be **zero** for every tag except the number of events you want to allow in flight at one time (see the "Limiting number of
 events in flight" section).
+
+For structures see the TURF ICD in the DocDB.
 
 ### Lost confirmation protection
 
@@ -192,10 +150,10 @@ An example of the event process would look something like this.
 
 ```
 (initialization section ignored)
-TURF 'Te' sends to fragment_in: frag 0 addr 0 len 446464 <8096 bytes of data>
-TURF 'Te' sends to fragment_in: frag 1 addr 0 len 446464 <8096 bytes of data>
+TURF 'T0' sends to fragment_in: frag 0 addr 0 len 446464 <8096 bytes of data>
+TURF 'T0' sends to fragment_in: frag 1 addr 0 len 446464 <8096 bytes of data>
 (repeat above 53 times)
-TURF 'Te' sends to fragment_in: frag 55 addr 0 len 446464 <1184 bytes of data>
+TURF 'T0' sends to fragment_in: frag 55 addr 0 len 446464 <1184 bytes of data>
 SFC fragcontrol_in sends to 'Ta': allow 1 tag 0 addr 0
 TURF 'Ta' sends to fragcontrol_in: tag 0 addr 0
 ```
@@ -212,7 +170,7 @@ difficult to determine that an event is *lost* because multiple events would be 
 Those new incoming events also would have to wait for their acknowledgements to be sent out, otherwise the "address" ordering
 would break (events must be acknowledged with the "addr" ordering that's desired for the readout).
 
-To avoid this (the "firehose from hell" problem), no *new* events will stream out until an ack with "initial" set to 0 is sent to the 'Ta'
+To avoid this (the "firehose from hell" problem), no *new* events will stream out until an ack with "allow" set to 1 is sent to the 'Ta'
 port (and once one event streams out, it will wait for the next 'Ta' ack, etc.).
 
 This allows for software to set up in a mode where only *one* event is read out at a time, controlling the event flow. 
@@ -229,7 +187,7 @@ SFC fragcontrol_in sends to 'Ta':
   tag 0 addr 3 allow 1
 TURF 'Ta' sends to fragcontrol_in: tag 0 addr 0
   (SFC internally increments 'tag' because an ack was completed)
-TURF 'Te' sends to fragment_in: frag 0 addr 0 len 446464 <8096 bytes of data>
+TURF 'T0' sends to fragment_in: frag 0 addr 0 len 446464 <8096 bytes of data>
 (+remaining fragments)
 ```
 At this point, the TURF *stops* sending data because it was allowed to send 1 event and it has sent one event. When the event builds at the
@@ -253,12 +211,12 @@ SFC fragcontrol_in sends to 'Ta':
   tag 0 addr 3 allow 1
 TURF 'Ta' sends to fragcontrol_in: tag 0 addr 0
   (SFC internally increments 'tag' because an ack was completed)
-TURF 'Te' sends to fragment_in: frag 0 addr 0 len 446464 <8096 bytes of data>
-TURF 'Te' sends to fragment_in: frag 1 addr 0 len 446464 <8096 bytes of data>
+TURF 'T0' sends to fragment_in: frag 0 addr 0 len 446464 <8096 bytes of data>
+TURF 'T0' sends to fragment_in: frag 1 addr 0 len 446464 <8096 bytes of data>
 (repeat above 53 times)
-TURF 'Te' sends to fragment_in: frag 55 addr 0 len 446464 <1184 bytes of data>
+TURF 'T0' sends to fragment_in: frag 55 addr 0 len 446464 <1184 bytes of data>
 (TURF continues to send data since 2 allowed, 1 sent)
-TURF 'Te' sends to fragment_in: frag 0 addr 1 len 446464 <8096 bytes of data>
+TURF 'T0' sends to fragment_in: frag 0 addr 1 len 446464 <8096 bytes of data>
 SFC fragcontrol_in sends to 'Ta': tag 1 addr 0 allow 1
 TURF 'Ta' sends to fragcontrol_in: tag 1 addr 0
   (SFC internally increments 'tag' because an ack was completed)
