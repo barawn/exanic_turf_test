@@ -150,10 +150,10 @@ An example of the event process would look something like this.
 
 ```
 (initialization section ignored)
-TURF 'Te' sends to fragment_in: frag 0 addr 0 len 446464 <8096 bytes of data>
-TURF 'Te' sends to fragment_in: frag 1 addr 0 len 446464 <8096 bytes of data>
+TURF 'T0' sends to fragment_in: frag 0 addr 0 len 446464 <8096 bytes of data>
+TURF 'T0' sends to fragment_in: frag 1 addr 0 len 446464 <8096 bytes of data>
 (repeat above 53 times)
-TURF 'Te' sends to fragment_in: frag 55 addr 0 len 446464 <1184 bytes of data>
+TURF 'T0' sends to fragment_in: frag 55 addr 0 len 446464 <1184 bytes of data>
 SFC fragcontrol_in sends to 'Ta': allow 1 tag 0 addr 0
 TURF 'Ta' sends to fragcontrol_in: tag 0 addr 0
 ```
@@ -187,7 +187,7 @@ SFC fragcontrol_in sends to 'Ta':
   tag 0 addr 3 allow 1
 TURF 'Ta' sends to fragcontrol_in: tag 0 addr 0
   (SFC internally increments 'tag' because an ack was completed)
-TURF 'Te' sends to fragment_in: frag 0 addr 0 len 446464 <8096 bytes of data>
+TURF 'T0' sends to fragment_in: frag 0 addr 0 len 446464 <8096 bytes of data>
 (+remaining fragments)
 ```
 At this point, the TURF *stops* sending data because it was allowed to send 1 event and it has sent one event. When the event builds at the
@@ -211,12 +211,12 @@ SFC fragcontrol_in sends to 'Ta':
   tag 0 addr 3 allow 1
 TURF 'Ta' sends to fragcontrol_in: tag 0 addr 0
   (SFC internally increments 'tag' because an ack was completed)
-TURF 'Te' sends to fragment_in: frag 0 addr 0 len 446464 <8096 bytes of data>
-TURF 'Te' sends to fragment_in: frag 1 addr 0 len 446464 <8096 bytes of data>
+TURF 'T0' sends to fragment_in: frag 0 addr 0 len 446464 <8096 bytes of data>
+TURF 'T0' sends to fragment_in: frag 1 addr 0 len 446464 <8096 bytes of data>
 (repeat above 53 times)
-TURF 'Te' sends to fragment_in: frag 55 addr 0 len 446464 <1184 bytes of data>
+TURF 'T0' sends to fragment_in: frag 55 addr 0 len 446464 <1184 bytes of data>
 (TURF continues to send data since 2 allowed, 1 sent)
-TURF 'Te' sends to fragment_in: frag 0 addr 1 len 446464 <8096 bytes of data>
+TURF 'T0' sends to fragment_in: frag 0 addr 1 len 446464 <8096 bytes of data>
 SFC fragcontrol_in sends to 'Ta': tag 1 addr 0 allow 1
 TURF 'Ta' sends to fragcontrol_in: tag 1 addr 0
   (SFC internally increments 'tag' because an ack was completed)
