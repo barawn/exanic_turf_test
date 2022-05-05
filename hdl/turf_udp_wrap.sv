@@ -3,7 +3,12 @@
 
 // This module wraps up the various SFP and UDP related stuff.
 // 
-module turf_udp_wrap #(parameter NSFP=2)(
+module turf_udp_wrap #( parameter NSFP=2,
+                        parameter DEBUG_IN="TRUE",
+                        parameter DEBUG_OUT="TRUE",
+                        parameter DEBUG_ACKNACK="TRUE",
+                        parameter DEBUG_EVENT_VIO="TRUE"
+        )(
         output [2*NSFP-1:0] sfp_led,
         output [NSFP-1:0] sfp_tx_p,
         output [NSFP-1:0] sfp_tx_n,
@@ -16,6 +21,13 @@ module turf_udp_wrap #(parameter NSFP=2)(
         input [NSFP-1:0] sfp_los,
         output [NSFP-1:0] sfp_rs,
         
+        // acking path
+        `HOST_NAMED_PORTS_AXI4S_MIN_IF( m_ack_ , 16),
+        // nacking path
+        `HOST_NAMED_PORTS_AXI4S_MIN_IF( m_nack_ , 16),
+        // event open interface
+        output event_open_o,        
+        
         // register interface
         output  clk_o,
         output  en_o,
@@ -25,6 +37,7 @@ module turf_udp_wrap #(parameter NSFP=2)(
         input [31:0] dat_i,
         output [31:0] dat_o                
     );
+
 
     localparam COMMON_SFP=0;
     
@@ -267,18 +280,20 @@ module turf_udp_wrap #(parameter NSFP=2)(
     wire [NUM_INBOUND-1:0] in_port_active;
     
     localparam NUM_OUTBOUND = 5;
-    localparam TE_PORT = 4;
+    localparam T0_PORT = 4;
     // we don't actually have to *specify* the outbound port values, but we do
     localparam [NUM_OUTBOUND*16-1:0]
-        OUTBOUND = { 16'd21605, // Te port
+        OUTBOUND = { 16'd21552, // T0 port
                      INBOUND };
     localparam TW_PORT_VALUE = 16'd21623;        
 
     // Event related stuff
     wire [9:0]  num_fragment_qwords;
+    wire [15:0] fragsrc_mask;
     wire [31:0] event_ip;
     wire [15:0] event_port;
     wire        event_is_open;    
+    assign event_open_o = event_is_open;
         
     wire [NUM_OUTBOUND*64-1:0] hdrout_tdata;
     wire [NUM_OUTBOUND-1:0]    hdrout_tvalid;
@@ -347,12 +362,7 @@ module turf_udp_wrap #(parameter NSFP=2)(
         .``outdata``tlast(  dataout_tlast[ port ] )
         
     
-    `KILL_UDP_IN( TA_PORT );
-    `KILL_UDP_IN( TN_PORT );
-    
-    `KILL_UDP_OUT( TA_PORT );
-    `KILL_UDP_OUT( TN_PORT );
-    `KILL_UDP_OUT( TE_PORT );
+    `KILL_UDP_OUT( T0_PORT );
                         
             
     // now try the UDP RDWR core
@@ -399,10 +409,25 @@ module turf_udp_wrap #(parameter NSFP=2)(
                     `CONNECT_UDP_INOUT( s_udphdr_ , s_udpdata_ , m_udphdr_ , m_udpdata_ , TC_PORT),
                     .my_mac_address( my_mac_address ),
                     .nfragment_count_o( num_fragment_qwords ),
+                    .fragsrc_mask_o(fragsrc_mask),
                     .event_ip_o( event_ip ),
                     .event_port_o( event_port ),
                     .event_open_o( event_is_open ));
-
+    // Ack port module always responds at its own port
+    assign hdrout_tuser[16*TA_PORT +: 16] = OUTBOUND[16*TA_PORT +: 16];
+    // Acking/nacking is the same module, they do the same things.
+    turf_acknack_port #(.CHECK_BITS(64'h800000FF_FFF00000))
+        u_ackport( .aclk(clk156), .aresetn(!clk156_rst),
+                    `CONNECT_UDP_INOUT( s_udphdr_ , s_udpdata_ , m_udphdr_ , m_udpdata_ , TA_PORT),
+                    .event_open_i(event_is_open),
+                    `CONNECT_AXI4S_MIN_IF( m_acknack_ , m_ack_ ));
+    // Nack port module always responds to its own port
+    assign hdrout_tuser[16*TN_PORT +: 16] = OUTBOUND[16*TN_PORT +: 16];
+    turf_acknack_port #(.CHECK_BITS(64'h000000FF_FFFFFFFF))
+        u_nackport( .aclk(clk156),.aresetn(!clk156_rst),
+                    `CONNECT_UDP_INOUT( s_udphdr_ , s_udpdata_ , m_udphdr_ , m_udpdata_ , TN_PORT),
+                    .event_open_i(event_is_open),
+                    `CONNECT_AXI4S_MIN_IF( m_acknack_ , m_nack_ ));
     wire [NUM_OUTBOUND-1:0] out_port_active;
     udp_port_mux #(.NUM_PORT(NUM_OUTBOUND),
                    .PAYLOAD_WIDTH(PAYLOAD_WIDTH))
@@ -417,31 +442,45 @@ module turf_udp_wrap #(parameter NSFP=2)(
                             
                             .port_active(out_port_active));
 
-    udp_ila u_udp_ila( .clk(clk156),
-                       .probe0( udpin_hdr_tdest ),
-                       .probe1( udpin_hdr_tvalid),
-                       .probe2( udpin_data_tdata ),
-                       .probe3( udpin_data_tkeep ),
-                       .probe4( udpin_data_tvalid ),
-                       .probe5( udpin_data_tready ),
-                       .probe6( udpin_data_tlast ),
-                       .probe7( udpin_hdr_tdata[0 +: 15] ));                      
-
-    udp_ila u_udpout_ila( .clk(clk156),
-                             .probe0( udpout_hdr_tuser ),
-                             .probe1( udpout_hdr_tvalid ),
-                             .probe2( udpout_data_tdata ),
-                             .probe3( udpout_data_tkeep ),
-                             .probe4( udpout_data_tvalid ),
-                             .probe5( udpout_data_tready ),
-                             .probe6( udpout_data_tlast ),
-                             .probe7( udpout_hdr_tdata[0 +: 15] ));
-
-    event_ctrl_vio u_evctrlvio( .clk(clk156),
-                                .probe_in0( event_ip ),
-                                .probe_in1( event_port ),
-                                .probe_in2( event_is_open ));
-
+    generate
+        if (DEBUG_IN == "TRUE") begin : INILA
+            udp_ila u_udp_ila( .clk(clk156),
+                               .probe0( udpin_hdr_tdest ),
+                               .probe1( udpin_hdr_tvalid),
+                               .probe2( udpin_data_tdata ),
+                               .probe3( udpin_data_tkeep ),
+                               .probe4( udpin_data_tvalid ),
+                               .probe5( udpin_data_tready ),
+                               .probe6( udpin_data_tlast ),
+                               .probe7( udpin_hdr_tdata[0 +: 15] ));                      
+        end
+        if (DEBUG_OUT == "TRUE") begin : OUTILA    
+            udp_ila u_udpout_ila( .clk(clk156),
+                                     .probe0( udpout_hdr_tuser ),
+                                     .probe1( udpout_hdr_tvalid ),
+                                     .probe2( udpout_data_tdata ),
+                                     .probe3( udpout_data_tkeep ),
+                                     .probe4( udpout_data_tvalid ),
+                                     .probe5( udpout_data_tready ),
+                                     .probe6( udpout_data_tlast ),
+                                     .probe7( udpout_hdr_tdata[0 +: 15] ));
+        end
+        if (DEBUG_EVENT_VIO == "TRUE") begin : EVENTVIO
+            event_ctrl_vio u_evctrlvio( .clk(clk156),
+                                        .probe_in0( event_ip ),
+                                        .probe_in1( event_port ),
+                                        .probe_in2( event_is_open ));
+        end
+        if (DEBUG_ACKNACK == "TRUE") begin : ACKNACKILA
+            acknack_ila u_ila(.clk(clk156),
+                              .probe0( m_ack_tvalid ),
+                              .probe1( m_ack_tready ),
+                              .probe2( m_ack_tdata ),
+                              .probe3( m_nack_tvalid ),
+                              .probe4( m_nack_tready ),
+                              .probe5( m_nack_tdata ));
+        end
+    endgenerate
     // interface runs at Ethernet speed
     assign clk_o = clk156;
     

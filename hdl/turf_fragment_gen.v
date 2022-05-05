@@ -10,8 +10,9 @@ module turf_fragment_gen(
         input aclk,
         input aresetn,
         // Payload uint64_ts in a fragment.
-        input [9:0] nfragment_count_i,
-        
+        input [9:0] nfragment_count_i,        
+        // Mask of source port
+        input [15:0] fragsrc_mask_i,
         // control interface
         `TARGET_NAMED_PORTS_AXI4S_MIN_IF( s_ctrl_ , 32 ),
         // data interface
@@ -20,10 +21,12 @@ module turf_fragment_gen(
         input       s_data_tlast,
         
         // UDP header interface, without the global statics
-        // (dscp/ecn/ttl/source port/source ip/dest ip/dest port)
+        // (dscp/ecn/ttl/source port/dest ip/dest port)
         // Checksum is pointless, Ethernet does a CRC, so it's static
         // So tdata here is just length
         `HOST_NAMED_PORTS_AXI4S_MIN_IF( m_hdr_ , 16),
+        // source port.
+        output [15:0] m_hdr_tuser,
         // UDP payload interface, I don't know what tuser does
         `HOST_NAMED_PORTS_AXI4S_MIN_IF( m_payload_ , 64 ),
         output [7:0] m_payload_tkeep,
@@ -31,10 +34,12 @@ module turf_fragment_gen(
         output       m_payload_tlast                
     );
 
+    parameter [15:0] BASE_PORT = "T0";    
+
     // this constant needs its top bit set
     localparam [15:0] CONSTANT_0 = 16'hDA7A;
     localparam [5:0] CONSTANT_1 = 6'h00;
-
+    
     // This takes an AXI-Stream input and splits it into UDP fragments.
     // States are IDLE, HEADER, TAG, and STREAM
     // We receive an AXI4-Stream for the event generation which consists
@@ -122,6 +127,7 @@ module turf_fragment_gen(
     assign s_data_tready = (state == STREAM && m_payload_tready);
     assign s_ctrl_tready = (state == IDLE);
     assign m_hdr_tdata = fragment_length;
+    assign m_hdr_tuser = (BASE_PORT & ~fragsrc_mask_i) | (fragment_number & fragsrc_mask_i);
     assign m_payload_tdata = (state == TAG) ? tag : s_data_tdata;
     assign m_payload_tlast = (state == STREAM && s_data_tlast);
     assign m_payload_tkeep = (state == STREAM) ? s_data_tkeep : 8'hFF;

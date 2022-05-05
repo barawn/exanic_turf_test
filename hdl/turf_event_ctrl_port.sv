@@ -11,7 +11,9 @@ module turf_event_ctrl_port #(
         parameter MAX_ADDR = 4095,
         parameter MAX_FRAGSRCMASK = 6,
         // holdoff in clock cycles
-        parameter [4:0] HOLDOFF_DELAY = 31
+        parameter [4:0] HOLDOFF_DELAY = 31,
+        // debug
+        parameter DEBUG = "TRUE"
         )
         (
         input aclk,
@@ -96,7 +98,7 @@ module turf_event_ctrl_port #(
     localparam [FSM_BITS-1:0] UPDATE_RESPONSE = 4;
     localparam [FSM_BITS-1:0] WRITE_HEADER = 5;
     localparam [FSM_BITS-1:0] WRITE_PAYLOAD = 6;
-    localparam [FSM_BITS-1:0] DUMP = 6;
+    localparam [FSM_BITS-1:0] DUMP = 7;
     reg [FSM_BITS-1:0] state = IDLE;
             
     always @(posedge aclk) begin
@@ -143,8 +145,8 @@ module turf_event_ctrl_port #(
                     end else state <= DUMP;
                 end
                 PARSE_COMMAND:
-                    if (|(cmd_match & needs_holdoff)) state <= UPDATE_RESPONSE; 
-                    else state <= WRITE_HEADER;
+                    if (|(cmd_match & needs_holdoff)) state <= HOLDOFF; 
+                    else state <= UPDATE_RESPONSE;
                 HOLDOFF: if (holdoff_done) state <= UPDATE_RESPONSE;
                 UPDATE_RESPONSE: state <= WRITE_HEADER;
                 WRITE_HEADER: if (m_udphdr_tready) state <= WRITE_PAYLOAD;
@@ -153,6 +155,23 @@ module turf_event_ctrl_port #(
             endcase
         end
     end
+    
+    generate
+        if (DEBUG == "TRUE") begin : ILA
+            wire [63:0] my_data = (m_udpdata_tvalid) ? m_udpdata_tdata : s_udpdata_tdata;
+            event_ctrl_ila u_ila(.clk(aclk),
+                                 .probe0( s_udphdr_tvalid ),
+                                 .probe1( s_udphdr_tready ),
+                                 .probe2( s_udpdata_tvalid ),
+                                 .probe3( s_udpdata_tready ),
+                                 .probe4( m_udphdr_tvalid ),
+                                 .probe5( m_udphdr_tready ),
+                                 .probe6( m_udpdata_tvalid ),
+                                 .probe7( m_udpdata_tready ),
+                                 .probe8( state ),
+                                 .probe9( my_data ));
+         end
+    endgenerate
     
     assign s_udphdr_tready = (state == IDLE);
     assign s_udpdata_tready = (state == DUMP);

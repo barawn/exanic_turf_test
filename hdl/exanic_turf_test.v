@@ -95,7 +95,7 @@ module exanic_turf_test(
     parameter [31:0] IDENT = "TFSM";
     parameter [3:0] VER_MAJOR = 0;
     parameter [3:0] VER_MINOR = 0;
-    parameter [7:0] VER_REV = 4;
+    parameter [7:0] VER_REV = 5;
     localparam [15:0] FIRMWARE_VERSION = { VER_MAJOR, VER_MINOR, VER_REV };
     parameter [15:0] FIRMWARE_DATE = {16{1'b0}};
     localparam [31:0] DATEVERSION = { FIRMWARE_DATE, FIRMWARE_VERSION };
@@ -118,6 +118,13 @@ module exanic_turf_test(
     wire [31:0] dat_out;
     wire [31:0] dat_in;
     
+    `DEFINE_AXI4S_MIN_IF( ack_ , 16 );
+    `DEFINE_AXI4S_MIN_IF( nack_ , 16 );
+    
+    // just kill 'em
+    assign ack_tready = 1'b1;
+    assign nack_tready = 1'b1;
+    
     turf_udp_wrap #(.NSFP(2)) 
         u_udp_wrap( .sfp_led( { sfp_2_led, sfp_1_led } ),
                     .sfp_tx_p({ sfp_2_tx_p, sfp_1_tx_p } ),
@@ -130,6 +137,9 @@ module exanic_turf_test(
                     .sfp_npres( { sfp_2_npres, sfp_1_npres } ),
                     .sfp_los( { sfp_2_los, sfp_1_los } ),
                     .sfp_rs( { sfp_2_rs, sfp_1_rs } ),
+                    
+                    `CONNECT_AXI4S_MIN_IF( m_ack_ , ack_ ),
+                    `CONNECT_AXI4S_MIN_IF( m_nack_ , nack_ ),
                     
                     .clk_o(ifclk),
                     .en_o(if_en[0]),
@@ -364,4 +374,12 @@ module exanic_turf_test(
                      .probe_in0(sfp_1_npres),
                      .probe_in1(sfp_2_npres));
     
+    // Debugging definitions
+    defparam u_axisrdwr.DEBUG = "FALSE";
+    defparam u_udp_wrap.u_rdwr.DEBUG = "FALSE";
+    defparam u_udp_wrap.DEBUG_IN = "TRUE";
+    defparam u_udp_wrap.DEBUG_OUT = "TRUE";
+    defparam u_udp_wrap.DEBUG_ACKNACK = "TRUE";
+    defparam u_udp_wrap.DEBUG_EVENT_VIO = "TRUE";
+    defparam u_udp_wrap.u_ctrlport.DEBUG = "TRUE";
 endmodule
