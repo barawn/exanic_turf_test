@@ -170,7 +170,7 @@ difficult to determine that an event is *lost* because multiple events would be 
 Those new incoming events also would have to wait for their acknowledgements to be sent out, otherwise the "address" ordering
 would break (events must be acknowledged with the "addr" ordering that's desired for the readout).
 
-To avoid this (the "firehose from hell" problem), no *new* events will stream out until an ack with "initial" set to 0 is sent to the 'Ta'
+To avoid this (the "firehose from hell" problem), no *new* events will stream out until an ack with "allow" set to 1 is sent to the 'Ta'
 port (and once one event streams out, it will wait for the next 'Ta' ack, etc.).
 
 This allows for software to set up in a mode where only *one* event is read out at a time, controlling the event flow. 
