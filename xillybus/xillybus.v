@@ -7,7 +7,9 @@ module xillybus(PCIE_TX_P, PCIE_TX_N, PCIE_RX_P, PCIE_RX_N, PCIE_REFCLK_P,
   user_r_mmresp_eof, user_r_mmresp_open, user_r_event_ctrl_rden,
   user_r_event_ctrl_data, user_r_event_ctrl_empty, user_r_event_ctrl_eof,
   user_r_event_ctrl_open, user_w_event_out_wren, user_w_event_out_data,
-  user_w_event_out_full, user_w_event_out_open);
+  user_w_event_out_full, user_w_event_out_open, user_w_event_size_out_wren,
+  user_w_event_size_out_data, user_w_event_size_out_full,
+  user_w_event_size_out_open);
 
   input [7:0] PCIE_RX_P;
   input [7:0] PCIE_RX_N;
@@ -22,6 +24,7 @@ module xillybus(PCIE_TX_P, PCIE_TX_N, PCIE_RX_P, PCIE_RX_N, PCIE_REFCLK_P,
   input  user_r_event_ctrl_empty;
   input  user_r_event_ctrl_eof;
   input  user_w_event_out_full;
+  input  user_w_event_size_out_full;
   output [7:0] PCIE_TX_P;
   output [7:0] PCIE_TX_N;
   output  bus_clk;
@@ -35,8 +38,11 @@ module xillybus(PCIE_TX_P, PCIE_TX_N, PCIE_RX_P, PCIE_RX_N, PCIE_REFCLK_P,
   output  user_r_event_ctrl_rden;
   output  user_r_event_ctrl_open;
   output  user_w_event_out_wren;
-  output [31:0] user_w_event_out_data;
+  output [63:0] user_w_event_out_data;
   output  user_w_event_out_open;
+  output  user_w_event_size_out_wren;
+  output [31:0] user_w_event_size_out_data;
+  output  user_w_event_size_out_open;
   wire  trn_reset_n;
   wire  trn_lnk_up_n;
   wire [3:0] s_axis_rq_tready;
@@ -228,6 +234,10 @@ module xillybus(PCIE_TX_P, PCIE_TX_N, PCIE_RX_P, PCIE_RX_N, PCIE_REFCLK_P,
     .user_w_event_out_wren_w(user_w_event_out_wren),
     .user_w_event_out_data_w(user_w_event_out_data),
     .user_w_event_out_full_w(user_w_event_out_full),
-    .user_w_event_out_open_w(user_w_event_out_open), .bus_clk_w(bus_clk));
+    .user_w_event_out_open_w(user_w_event_out_open), .bus_clk_w(bus_clk),
+    .user_w_event_size_out_wren_w(user_w_event_size_out_wren),
+    .user_w_event_size_out_data_w(user_w_event_size_out_data),
+    .user_w_event_size_out_full_w(user_w_event_size_out_full),
+    .user_w_event_size_out_open_w(user_w_event_size_out_open));
 
 endmodule
