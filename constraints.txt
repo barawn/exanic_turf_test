@@ -1,0 +1,2 @@
+constraints/fpga.xdc
+constraints/x25_ddr4_pinout.xdc
