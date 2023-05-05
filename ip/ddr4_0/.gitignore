@@ -1,0 +1,5 @@
+# Ignore everything.
+*
+# Except the ddr4_0.xci file and gitignore
+!ddr4_0.xci
+!.gitignore

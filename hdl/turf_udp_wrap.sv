@@ -27,6 +27,12 @@ module turf_udp_wrap #( parameter NSFP=2,
         `HOST_NAMED_PORTS_AXI4S_MIN_IF( m_nack_ , 16),
         // event open interface
         output event_open_o,        
+        // event control input
+        `TARGET_NAMED_PORTS_AXI4S_MIN_IF( s_ev_ctrl_ , 32),
+        // event data input
+        `TARGET_NAMED_PORTS_AXI4S_MIN_IF( s_ev_data_ , 64),            
+        input [7:0] s_ev_data_tkeep,
+        input s_ev_data_tlast,
         
         // register interface
         output  clk_o,
@@ -169,7 +175,11 @@ module turf_udp_wrap #( parameter NSFP=2,
                 assign qpll0outclk_in = sfp_qpll0outclk;
                 assign qpll0outrefclk_in = sfp_qpll0outrefclk;
             end
-            eth_xcvr_phy_wrapper #(.HAS_COMMON(i==0?1:0))
+            // COUNT_125US is number of 156 MHz clock cycles in
+            // 125 us. Needs to be an integer because more recent
+            // versions of Vivado bitch about it.
+            eth_xcvr_phy_wrapper #(.HAS_COMMON(i==0?1:0),
+                                   .COUNT_125US(19531))
                 u_phy( .xcvr_ctrl_clk( clk125 ),
                        .xcvr_ctrl_rst( rst_clk125 ),
                        .xcvr_gtpowergood_out(powergood),
@@ -343,7 +353,7 @@ module turf_udp_wrap #( parameter NSFP=2,
         assign dataout_tlast[ idx ] = 1'b0
 
     // eff it, just macro things
-    `define CONNECT_UDP_INOUT( inhdr, indata, outhdr, outdata, port)    \
+    `define CONNECT_UDP_IN( inhdr, indata, port )                             \
         .``inhdr``tdata( hdr_tdata[(64 * port ) +: 64] ),   \
         .``inhdr``tvalid( hdr_tvalid[ port ] ),             \
         .``inhdr``tready( hdr_tready[ port ] ),             \
@@ -351,7 +361,9 @@ module turf_udp_wrap #( parameter NSFP=2,
         .``indata``tkeep( data_tkeep[((PAYLOAD_WIDTH/8) * port ) +: (PAYLOAD_WIDTH/8)] ),   \
         .``indata``tready( data_tready[ port ] ),   \
         .``indata``tvalid( data_tvalid[ port ] ),   \
-        .``indata``tlast(  data_tlast[ port ] ),    \
+        .``indata``tlast(  data_tlast[ port ] )
+        
+    `define CONNECT_UDP_OUT( outhdr, outdata, port )                            \
         .``outhdr``tdata( hdrout_tdata[(64 * port ) +: 64] ),   \
         .``outhdr``tvalid( hdrout_tvalid[ port ] ),             \
         .``outhdr``tready( hdrout_tready[ port ] ),             \
@@ -360,9 +372,13 @@ module turf_udp_wrap #( parameter NSFP=2,
         .``outdata``tready( dataout_tready[ port ] ),   \
         .``outdata``tvalid( dataout_tvalid[ port ] ),   \
         .``outdata``tlast(  dataout_tlast[ port ] )
+            
+    `define CONNECT_UDP_INOUT( inhdr, indata, outhdr, outdata, port)        \
+        `CONNECT_UDP_IN( inhdr, indata, port ),                             \
+        `CONNECT_UDP_OUT( outhdr, outdata, port)        
         
     
-    `KILL_UDP_OUT( T0_PORT );
+    //    `KILL_UDP_OUT( T0_PORT );
                         
             
     // now try the UDP RDWR core
@@ -372,28 +388,7 @@ module turf_udp_wrap #( parameter NSFP=2,
     turf_udp_rdwr u_rdwr( .aclk(clk156),.aresetn(!clk156_rst),
                           `CONNECT_UDP_INOUT( s_hdr_ , s_payload_ , m_hdr_ , m_payload_ , TRW_PORT ),
                           .s_hdr_tuser( rdwr_tuser ),
-                          .m_hdr_tuser( rdwrout_tuser ),
-//                          .s_hdr_tdata( hdr_tdata[64*TRW_PORT +: 64]),
-//                          .s_hdr_tvalid(hdr_tvalid[TRW_PORT]),
-//                          .s_hdr_tready(hdr_tready[TRW_PORT]),
-//                          .s_hdr_tuser( rdwr_tuser),
-//                          .s_payload_tdata( data_tdata[PAYLOAD_WIDTH*TRW_PORT +: PAYLOAD_WIDTH] ),
-//                          .s_payload_tvalid(data_tvalid[TRW_PORT]),
-//                          .s_payload_tready(data_tready[TRW_PORT]),
-//                          .s_payload_tkeep(data_tkeep[(PAYLOAD_WIDTH/8)*TRW_PORT +: (PAYLOAD_WIDTH/8)]),
-//                          .s_payload_tlast(data_tlast[TRW_PORT]),
-                                                    
-//                          .m_hdr_tdata( hdrout_tdata[64*TRW_PORT +: 64]),
-//                          .m_hdr_tvalid(hdrout_tvalid[TRW_PORT]),
-//                          .m_hdr_tready(hdrout_tready[TRW_PORT]),
-//                          .m_hdr_tuser(rdwrout_tuser),
-                          
-//                          .m_payload_tdata( dataout_tdata[PAYLOAD_WIDTH*TRW_PORT +: PAYLOAD_WIDTH] ),
-//                          .m_payload_tvalid(dataout_tvalid[TRW_PORT]),
-//                          .m_payload_tready(dataout_tready[TRW_PORT]),
-//                          .m_payload_tkeep( dataout_tkeep[(PAYLOAD_WIDTH/8)*TRW_PORT +: (PAYLOAD_WIDTH/8)]),
-//                          .m_payload_tlast(dataout_tlast[TRW_PORT]),
-                          
+                          .m_hdr_tuser( rdwrout_tuser ),                          
                           // and the interface
                           .en_o(en_o),
                           .wr_o(wr_o),
@@ -428,6 +423,20 @@ module turf_udp_wrap #( parameter NSFP=2,
                     `CONNECT_UDP_INOUT( s_udphdr_ , s_udpdata_ , m_udphdr_ , m_udpdata_ , TN_PORT),
                     .event_open_i(event_is_open),
                     `CONNECT_AXI4S_MIN_IF( m_acknack_ , m_nack_ ));
+    // Fragment module is a pure output. It does NOT always
+    // transmit at a fixed port, so need to hook up tuser here.
+    // This uses the T0_PORT.
+    turf_fragment_gen u_fraggen(.aclk(clk156),.aresetn(!clk156_rst),
+                                .nfragment_count_i(num_fragment_qwords),
+                                .fragsrc_mask_i(fragsrc_mask),
+                                `CONNECT_UDP_OUT( m_hdr_ , m_payload_ , T0_PORT ),
+                                .m_hdr_tuser( hdrout_tuser[16*T0_PORT +: 16] ),
+                                `CONNECT_AXI4S_MIN_IF( s_ctrl_ , s_ev_ctrl_ ),
+                                `CONNECT_AXI4S_MIN_IF( s_data_ , s_ev_data_ ),
+                                .s_data_tkeep(s_ev_data_tkeep),
+                                .s_data_tlast(s_ev_data_tlast));
+
+
     wire [NUM_OUTBOUND-1:0] out_port_active;
     udp_port_mux #(.NUM_PORT(NUM_OUTBOUND),
                    .PAYLOAD_WIDTH(PAYLOAD_WIDTH))

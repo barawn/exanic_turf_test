@@ -121,6 +121,11 @@ module exanic_turf_test(
     `DEFINE_AXI4S_MIN_IF( ack_ , 16 );
     `DEFINE_AXI4S_MIN_IF( nack_ , 16 );
     
+    `DEFINE_AXI4S_MIN_IF( ev_ctrl_ , 32);
+    `DEFINE_AXI4S_MIN_IF( ev_data_ , 64);
+    wire ev_data_tlast;
+    wire [7:0] ev_data_tkeep;
+    
     // just kill 'em
     assign ack_tready = 1'b1;
     assign nack_tready = 1'b1;
@@ -140,6 +145,9 @@ module exanic_turf_test(
                     
                     `CONNECT_AXI4S_MIN_IF( m_ack_ , ack_ ),
                     `CONNECT_AXI4S_MIN_IF( m_nack_ , nack_ ),
+                    
+                    `CONNECT_AXI4S_MIN_IF( s_ev_ctrl_ , ev_ctrl_ ),
+                    `CONNECT_AXI4S_MIN_IF( s_ev_data_ , ev_data_ ),
                     
                     .clk_o(ifclk),
                     .en_o(if_en[0]),
@@ -188,10 +196,16 @@ module exanic_turf_test(
     wire        xil_event_ctrl_eof = 1'b0;
     
     // and inbound event path
-    wire [31:0] xil_event_out_data;
+    wire [63:0] xil_event_out_data;
     wire        xil_event_out_wren;
     wire        xil_event_out_wrfull;
     wire        xil_event_out_open;
+    
+    // and inbound event size path
+    wire [31:0] xil_event_size_out_data;
+    wire        xil_event_size_out_wren;
+    wire        xil_event_size_out_wrfull;
+    wire        xil_event_size_out_open;
     
     wire        xil_if_reset;
     wire        xil_reset;
@@ -232,9 +246,31 @@ module exanic_turf_test(
                             .valid(mmreq_tvalid),
                             .rd_en(mmreq_tvalid && mmreq_tready),
                             .srst(xil_reset));
+
+    xilly_to_axi64 u_event_fifo(.rd_clk(ifclk),
+                               .wr_clk(xil_clk),
+                               .din(xil_event_out_data),
+                               .wr_en(xil_event_out_wren),
+                               .full(xil_event_out_full),
+                               .valid( ev_data_tvalid ),
+                               .dout( ev_data_tdata ),
+                               .rd_en( ev_data_tvalid && ev_data_tready),
+                               .srst(xil_reset));
+
+    xilly_to_axi u_event_size_fifo(.rd_clk(if_clk),
+                                   .wr_clk(xil_clk),
+                                   .din(xil_event_out_size_data),
+                                   .wr_en(xil_event_out_size_wren),
+                                   .full(xil_event_out_size_full),
+                                   .valid( ev_ctrl_tvalid ),
+                                   .dout( ev_ctrl_tdata ),
+                                   .rd_en( ev_ctrl_tvalid && ev_ctrl_tready),
+                                   .srst(xil_reset));
                                                              
     // and don't care the fulls
     assign xil_event_out_wrfull = 1'b0;
+
+
     
     xillybus u_xillybus(.PCIE_TX_P(pcie_tx_p),
                         .PCIE_TX_N(pcie_tx_n),
@@ -267,7 +303,13 @@ module exanic_turf_test(
                         .user_w_event_out_data( xil_event_out_data ),
                         .user_w_event_out_wren( xil_event_out_wren ),
                         .user_w_event_out_full( xil_event_out_wrfull ),
-                        .user_w_event_out_open( xil_event_out_open ));
+                        .user_w_event_out_open( xil_event_out_open ),
+                        // inbound event size path
+                        .user_w_event_size_out_data( xil_event_size_out_data ),
+                        .user_w_event_size_out_wren( xil_event_size_out_wren ),
+                        .user_w_event_size_out_full( xil_event_size_out_full ),
+                        .user_w_event_size_out_open( xil_event_size_out_open )
+                        );
 
     turf_axis_rdwr u_axisrdwr( .aclk(ifclk),
                                .aresetn(!xil_if_reset),
