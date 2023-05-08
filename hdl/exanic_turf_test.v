@@ -222,6 +222,7 @@ module exanic_turf_test(
     // Kill the inbound paths for now
     assign xil_event_ctrl_rdempty = 1'b0;
     assign xil_event_ctrl_data = 8'h00;
+        
     
     // AXI4-stream coming out of/into the cross fifo
     `DEFINE_AXI4S_MIN_IF( mmreq_ , 32 );
@@ -251,7 +252,7 @@ module exanic_turf_test(
                                .wr_clk(xil_clk),
                                .din(xil_event_out_data),
                                .wr_en(xil_event_out_wren),
-                               .full(xil_event_out_full),
+                               .full(xil_event_out_wrfull),
                                .valid( ev_data_tvalid ),
                                .dout( ev_data_tdata ),
                                .rd_en( ev_data_tvalid && ev_data_tready),
@@ -259,17 +260,13 @@ module exanic_turf_test(
 
     xilly_to_axi u_event_size_fifo(.rd_clk(if_clk),
                                    .wr_clk(xil_clk),
-                                   .din(xil_event_out_size_data),
-                                   .wr_en(xil_event_out_size_wren),
-                                   .full(xil_event_out_size_full),
+                                   .din(xil_event_size_out_data),
+                                   .wr_en(xil_event_size_out_wren),
+                                   .full(xil_event_size_out_wrfull),
                                    .valid( ev_ctrl_tvalid ),
                                    .dout( ev_ctrl_tdata ),
                                    .rd_en( ev_ctrl_tvalid && ev_ctrl_tready),
-                                   .srst(xil_reset));
-                                                             
-    // and don't care the fulls
-    assign xil_event_out_wrfull = 1'b0;
-
+                                   .srst(xil_reset));                                                             
 
     
     xillybus u_xillybus(.PCIE_TX_P(pcie_tx_p),
@@ -307,7 +304,7 @@ module exanic_turf_test(
                         // inbound event size path
                         .user_w_event_size_out_data( xil_event_size_out_data ),
                         .user_w_event_size_out_wren( xil_event_size_out_wren ),
-                        .user_w_event_size_out_full( xil_event_size_out_full ),
+                        .user_w_event_size_out_full( xil_event_size_out_wrfull ),
                         .user_w_event_size_out_open( xil_event_size_out_open )
                         );
 
