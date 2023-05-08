@@ -258,7 +258,7 @@ module exanic_turf_test(
                                .rd_en( ev_data_tvalid && ev_data_tready),
                                .srst(xil_reset));
 
-    xilly_to_axi u_event_size_fifo(.rd_clk(if_clk),
+    xilly_to_axi u_event_size_fifo(.rd_clk(ifclk),
                                    .wr_clk(xil_clk),
                                    .din(xil_event_size_out_data),
                                    .wr_en(xil_event_size_out_wren),
