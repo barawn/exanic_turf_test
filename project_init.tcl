@@ -12,9 +12,16 @@ source [file join [get_repo_dir] "submodules" "verilog-library-barawn" "tclbits"
 source [file join [get_repo_dir] "submodules" "verilog-library-barawn" "tclbits" "repo_files.tcl"]
 
 # Make sure the project behavior stays the same.
-set f [open [ file join [get_repo_dir] "barawn_repository" ] ]
-set repo [read $f]
-add_ip_repository $repo
+set fn [file join [get_repo_dir] "barawn_repository"]
+if {[file exists $fn]} {
+    set f [open $fn]
+    set repo [read $f]
+    add_ip_repository $repo
+} else {
+    puts "No barawn_repository file found!"
+    puts "You need to put the path to the barawn/vivado_custom_ip Git repo"
+    puts "in a file called barawn_repository in the top directory."
+}
 
 # Add pre-synthesis script if needed
 set_pre_synthesis_tcl "pre_synthesis.tcl"
