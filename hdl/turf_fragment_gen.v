@@ -6,6 +6,11 @@
 // stream, and then the data through the s_data_ port.
 // The tag and length are present in the first 8 bytes along
 // with a constant and the fragment number.
+//
+// NOTE: This function needs a way to deal with the situation
+// where there's data presented to it but the port is NOT open
+// Right now it just captures the IP and pot when the
+// event_open_i signal goes high.
 module turf_fragment_gen(
         input aclk,
         input aresetn,
@@ -13,6 +18,12 @@ module turf_fragment_gen(
         input [9:0] nfragment_count_i,        
         // Mask of source port
         input [15:0] fragsrc_mask_i,
+        // Event path is open
+        input event_open_i,
+        // Destination IP
+        input [31:0] event_ip_i,
+        // Destination port
+        input [15:0] event_port_i,
         // control interface
         `TARGET_NAMED_PORTS_AXI4S_MIN_IF( s_ctrl_ , 32 ),
         // data interface
@@ -20,11 +31,8 @@ module turf_fragment_gen(
         input [7:0] s_data_tkeep,
         input       s_data_tlast,
         
-        // UDP header interface, without the global statics
-        // (dscp/ecn/ttl/source port/dest ip/dest port)
-        // Checksum is pointless, Ethernet does a CRC, so it's static
-        // So tdata here is just length
-        `HOST_NAMED_PORTS_AXI4S_MIN_IF( m_hdr_ , 16),
+        // UDP header interface (63:32=IP, 31:16=port, 15:0=length)
+        `HOST_NAMED_PORTS_AXI4S_MIN_IF( m_hdr_ , 64),
         // source port.
         output [15:0] m_hdr_tuser,
         // UDP payload interface, I don't know what tuser does
@@ -35,6 +43,23 @@ module turf_fragment_gen(
     );
 
     parameter [15:0] BASE_PORT = "T0";    
+
+    parameter DEBUG = "TRUE";
+    // for debugging want:
+    // 0: state (2 bits)
+    // 1: length (20 bits)
+    // 2: remaining length (20 bits)
+    // 3: s_ctrl_tvalid
+    // 4: s_ctrl_tready
+    // 5: s_data_tvalid
+    // 6: s_data_tready
+    // 7: s_data_tlast
+    // 8: m_hdr_tready
+    // 9: m_hdr_tvalid
+    // 10: m_payload_tready
+    // 11: m_payload_tvalid
+    // 12: m_payload_tlast
+
 
     // this constant needs its top bit set
     localparam [15:0] CONSTANT_0 = 16'hDA7A;
@@ -71,11 +96,28 @@ module turf_fragment_gen(
 
     wire [63:0] tag = { CONSTANT_0, CONSTANT_1, fragment_number, address, length };
 
+    // captured IP address
+    reg [31:0] event_ip = {32{1'b0}};
+    // captured port
+    reg [15:0] event_port = {16{1'b0}};
+    // reregistered event open, to look for a rising edge
+    reg event_was_open = 0;
+    // set high if we EVER get a valid IP
+    reg event_was_ever_open = 0;
+
     always @(posedge aclk) begin
+        if (!aresetn) event_was_ever_open <= 1'b0;
+        else if (event_open_i) event_was_ever_open <= 1'b1;
+        event_was_open <= event_open_i;
+        if (event_open_i && !event_was_open) begin
+            event_ip <= event_ip_i;
+            event_port <= event_port_i;
+        end
+
         if (!aresetn) state <= IDLE;
         else begin
             case (state)
-                IDLE: if (s_ctrl_tvalid && s_ctrl_tready) state <= HEADER;
+                IDLE: if (s_ctrl_tvalid && s_ctrl_tready && event_was_ever_open) state <= HEADER;
                 HEADER: if (m_hdr_tvalid && m_hdr_tready) state <= TAG;
                 TAG: if (m_payload_tvalid && m_payload_tready) state <= STREAM;
                 STREAM: if (m_payload_tvalid && m_payload_tready) begin
@@ -122,11 +164,43 @@ module turf_fragment_gen(
             fragment_number <= fragment_number + 1;                            
      end
 
+    // 0: state (2 bits)
+    // 1: length (20 bits)
+    // 2: remaining length (20 bits)
+    // 3: s_ctrl_tvalid
+    // 4: s_ctrl_tready
+    // 5: s_data_tvalid
+    // 6: s_data_tready
+    // 7: s_data_tlast
+    // 8: m_hdr_tready
+    // 9: m_hdr_tvalid
+    // 10: m_payload_tready
+    // 11: m_payload_tvalid
+    // 12: m_payload_tlast
+    generate
+        if (DEBUG == "TRUE") begin : DBG
+            fragment_gen_ila u_ila(.clk(aclk),
+                                   .probe0(state),
+                                   .probe1(length),
+                                   .probe2(remaining_length),
+                                   .probe3(s_ctrl_tvalid),
+                                   .probe4(s_ctrl_tready),
+                                   .probe5(s_data_tvalid),
+                                   .probe6(s_data_tready),
+                                   .probe7(s_data_tlast),
+                                   .probe8(m_hdr_tready),
+                                   .probe9(m_hdr_tvalid),
+                                   .probe10(m_payload_tready),
+                                   .probe11(m_payload_tvalid),
+                                   .probe12(m_payload_tlast));
+        end
+    endgenerate
+    
     assign m_hdr_tvalid = (state == HEADER);
     assign m_payload_tvalid = (state == TAG || (state == STREAM && s_data_tvalid));
     assign s_data_tready = (state == STREAM && m_payload_tready);
-    assign s_ctrl_tready = (state == IDLE);
-    assign m_hdr_tdata = fragment_length;
+    assign s_ctrl_tready = (state == IDLE && event_was_ever_open);
+    assign m_hdr_tdata = { event_ip, event_port, fragment_length };
     assign m_hdr_tuser = (BASE_PORT & ~fragsrc_mask_i) | (fragment_number & fragsrc_mask_i);
     assign m_payload_tdata = (state == TAG) ? tag : s_data_tdata;
     assign m_payload_tlast = (state == STREAM && s_data_tlast);
