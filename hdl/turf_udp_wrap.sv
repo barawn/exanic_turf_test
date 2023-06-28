@@ -424,11 +424,14 @@ module turf_udp_wrap #( parameter NSFP=2,
                     .event_open_i(event_is_open),
                     `CONNECT_AXI4S_MIN_IF( m_acknack_ , m_nack_ ));
     // Fragment module is a pure output. It does NOT always
-    // transmit at a fixed port, so need to hook up tuser here.
+    // transmit from a fixed port, so need to hook up tuser here.
     // This uses the T0_PORT.
     turf_fragment_gen u_fraggen(.aclk(clk156),.aresetn(!clk156_rst),
                                 .nfragment_count_i(num_fragment_qwords),
                                 .fragsrc_mask_i(fragsrc_mask),
+                                .event_open_i(event_is_open),
+                                .event_ip_i(event_ip),
+                                .event_port_i(event_port),
                                 `CONNECT_UDP_OUT( m_hdr_ , m_payload_ , T0_PORT ),
                                 .m_hdr_tuser( hdrout_tuser[16*T0_PORT +: 16] ),
                                 `CONNECT_AXI4S_MIN_IF( s_ctrl_ , s_ev_ctrl_ ),
@@ -453,6 +456,8 @@ module turf_udp_wrap #( parameter NSFP=2,
 
     generate
         if (DEBUG_IN == "TRUE") begin : INILA
+            wire [7:0] dbg_in_port = { {(8-NUM_INBOUND){1'b0}}, in_port_active };
+            
             udp_ila u_udp_ila( .clk(clk156),
                                .probe0( udpin_hdr_tdest ),
                                .probe1( udpin_hdr_tvalid),
@@ -461,9 +466,11 @@ module turf_udp_wrap #( parameter NSFP=2,
                                .probe4( udpin_data_tvalid ),
                                .probe5( udpin_data_tready ),
                                .probe6( udpin_data_tlast ),
-                               .probe7( udpin_hdr_tdata[0 +: 15] ));                      
+                               .probe7( udpin_hdr_tdata[0 +: 15] ),
+                               .probe8( dbg_in_port ));                      
         end
         if (DEBUG_OUT == "TRUE") begin : OUTILA    
+            wire [7:0] dbg_out_port = { {(8-NUM_OUTBOUND){1'b0}}, out_port_active };
             udp_ila u_udpout_ila( .clk(clk156),
                                      .probe0( udpout_hdr_tuser ),
                                      .probe1( udpout_hdr_tvalid ),
@@ -472,7 +479,8 @@ module turf_udp_wrap #( parameter NSFP=2,
                                      .probe4( udpout_data_tvalid ),
                                      .probe5( udpout_data_tready ),
                                      .probe6( udpout_data_tlast ),
-                                     .probe7( udpout_hdr_tdata[0 +: 15] ));
+                                     .probe7( udpout_hdr_tdata[0 +: 15] ),
+                                     .probe8( dbg_out_port ));
         end
         if (DEBUG_EVENT_VIO == "TRUE") begin : EVENTVIO
             event_ctrl_vio u_evctrlvio( .clk(clk156),
