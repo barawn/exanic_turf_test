@@ -116,8 +116,8 @@ module turf_event_ctrl_port #(
         if (state == PARSE_COMMAND) begin
             if (cmd_match[OP_CMD]) begin
                 event_is_open <= 1'b1;
-                event_ip <= s_udpdata_tdata[16 +: 32];
-                event_port <= s_udpdata_tdata[0 +: 16];
+                event_ip <= s_udpdata_tdata[32 +: 32];
+                event_port <= s_udpdata_tdata[16 +: 16];
             end else if (cmd_match[CL_CMD])
                 event_is_open <= 1'b0;
             
