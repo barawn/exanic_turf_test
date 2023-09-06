@@ -42,6 +42,8 @@ module turf_fragment_gen(
         output       m_payload_tlast                
     );
 
+    parameter USE_TLAST = "FALSE";
+
     parameter [15:0] BASE_PORT = "T0";    
 
     parameter DEBUG = "TRUE";
@@ -105,6 +107,10 @@ module turf_fragment_gen(
     // set high if we EVER get a valid IP
     reg event_was_ever_open = 0;
 
+    wire tlast_internal = (current_length_remaining64[9:0] == fragment_beats) && (current_length_remaining64[10 +: 7] == {7{1'b0}});
+
+    wire tlast = (USE_TLAST == "TRUE") ? s_data_tlast : tlast_internal;
+
     always @(posedge aclk) begin
         if (!aresetn) event_was_ever_open <= 1'b0;
         else if (event_open_i) event_was_ever_open <= 1'b1;
@@ -121,7 +127,7 @@ module turf_fragment_gen(
                 HEADER: if (m_hdr_tvalid && m_hdr_tready) state <= TAG;
                 TAG: if (m_payload_tvalid && m_payload_tready) state <= STREAM;
                 STREAM: if (m_payload_tvalid && m_payload_tready) begin
-                    if (m_payload_tlast) state <= IDLE;
+                    if (tlast) state <= IDLE;
                     else if (fragment_beats == nfragment_count_i) state <= HEADER;
                 end
             endcase
@@ -203,6 +209,6 @@ module turf_fragment_gen(
     assign m_hdr_tdata = { event_ip, event_port, fragment_length };
     assign m_hdr_tuser = (BASE_PORT & ~fragsrc_mask_i) | (fragment_number & fragsrc_mask_i);
     assign m_payload_tdata = (state == TAG) ? tag : s_data_tdata;
-    assign m_payload_tlast = (state == STREAM && s_data_tlast);
+    assign m_payload_tlast = (state == STREAM && tlast);
     assign m_payload_tkeep = (state == STREAM) ? s_data_tkeep : 8'hFF;
 endmodule
