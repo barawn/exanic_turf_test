@@ -123,8 +123,8 @@ module exanic_turf_test(
     
     `DEFINE_AXI4S_MIN_IF( ev_ctrl_ , 32);
     `DEFINE_AXI4S_MIN_IF( ev_data_ , 64);
-    wire ev_data_tlast;
-    wire [7:0] ev_data_tkeep;
+    wire ev_data_tlast = 1'b0;
+    wire [7:0] ev_data_tkeep = 8'hFF;
     
     // just kill 'em
     assign ack_tready = 1'b1;
@@ -148,7 +148,8 @@ module exanic_turf_test(
                     
                     `CONNECT_AXI4S_MIN_IF( s_ev_ctrl_ , ev_ctrl_ ),
                     `CONNECT_AXI4S_MIN_IF( s_ev_data_ , ev_data_ ),
-                    
+                    .s_ev_data_tlast(ev_data_tlast),
+                    .s_ev_data_tkeep(ev_data_tkeep),
                     .clk_o(ifclk),
                     .en_o(if_en[0]),
                     .wr_o(if_wr[0]),
