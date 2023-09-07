@@ -12,6 +12,7 @@ ip/debug/event_ctrl_vio/event_ctrl_vio.xci
 ip/debug/event_ila/event_ila.xci
 ip/fifo_32x512/fifo_32x512.xci
 ip/fifo_8x2048/fifo_8x2048.xci
+ip/debug/fragment_gen_ila/fragment_gen_ila.xci
 ip/sim/m_ev_ctrl_vip/m_ev_ctrl_vip.xci
 ip/sim/m_ev_data_vip/m_ev_data_vip.xci
 ip/sim/m_udpdata_vip/m_udpdata_vip.xci

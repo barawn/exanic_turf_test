@@ -1,5 +1,6 @@
 ip/ddr4_0/ddr4_0.xci
 xillybus/xillybus_core.edf
+ip/debug/fragment_gen_ila/fragment_gen_ila.xci
 submodules/verilog-ethernet/lib/axis/rtl/arbiter.v
 submodules/verilog-ethernet/rtl/arp.v
 submodules/verilog-ethernet/rtl/arp_cache.v
@@ -63,11 +64,11 @@ hdl/udp_port_mux.sv
 hdl/udp_port_switch.sv
 hdl/xillybus/xilly_cc_reset.sv
 hdl/exanic_turf_test.v
-hdl/turf_test_core.v
 ip/debug/xcvr_ila/xcvr_ila.xci
-ip/sim/m_ev_data_vip/m_ev_data_vip.xci
-ip/sim/m_ev_ctrl_vip/m_ev_ctrl_vip.xci
-ip/fifo_32x512/fifo_32x512.xci
-ip/fifo_8x2048/fifo_8x2048.xci
 ip/sim/m_udphdr_vip/m_udphdr_vip.xci
 ip/sim/m_udpdata_vip/m_udpdata_vip.xci
+ip/sim/m_ev_data_vip/m_ev_data_vip.xci
+ip/sim/m_ev_ctrl_vip/m_ev_ctrl_vip.xci
+ip/fifo_8x2048/fifo_8x2048.xci
+ip/fifo_32x512/fifo_32x512.xci
+hdl/turf_test_core.v
