@@ -6,9 +6,9 @@
 // gets ignored.
 module turf_event_ctrl_port #(
         // maximum value for the fragment length
-        parameter MAX_FRAGMENT_LEN=8095,
+        parameter [15:0] MAX_FRAGMENT_LEN=8095,
         // maximum address value
-        parameter MAX_ADDR = 4095,
+        parameter [15:0] MAX_ADDR = 4095,
         parameter MAX_FRAGSRCMASK = 6,
         // holdoff in clock cycles
         parameter [4:0] HOLDOFF_DELAY = 31,
