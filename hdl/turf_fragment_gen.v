@@ -81,13 +81,20 @@ module turf_fragment_gen(
     localparam [FSM_BITS-1:0] STREAM = 3;
     reg [FSM_BITS-1:0] state = IDLE;
     
+    // number of beats that have transferred (starts at 0)
     reg [9:0] fragment_beats = {10{1'b0}};
     reg [9:0] fragment_number = {10{1'b0}};
     reg [11:0] address = {12{1'b0}};
     reg [19:0] length = {20{1'b0}};
+    // This is the remaining length in the entire transaction. Loaded at start
+    // of new transaction, and updated at HEADER
     reg [19:0] remaining_length = {20{1'b0}};
+    // Fragment length. Calculated at IDLE for first fragment, and at TAG for next
     reg [15:0] fragment_length = {16{1'b0}};
 
+    // This is either the remaining length in this *entire* transaction
+    // (if not IDLE) *or* it's the total length of the transaction when
+    // a new transaction occurs in IDLE.
     wire [19:0] current_length_remaining = (state == IDLE) ? 
         s_ctrl_tdata[0 +: 20] : remaining_length;
     // round current length remaining
@@ -107,8 +114,18 @@ module turf_fragment_gen(
     // set high if we EVER get a valid IP
     reg event_was_ever_open = 0;
 
-    wire tlast_internal = (current_length_remaining64[9:0] == fragment_beats) && (current_length_remaining64[10 +: 7] == {7{1'b0}});
+    // max number of beats we want to send (so min is 1)
+    reg [12:0] max_fragment_beats = {13{1'b0}};
+//    wire [13:0] max_fragment_beats = (fragment_length[2:0] != 3'b000) ?
+//        fragment_length[3 +: 13] + 1 :
+//        fragment_length[3 +: 13];    
 
+    // this is the last payload beat
+    wire last_payload = (max_fragment_beats[9:0] == fragment_beats + 1);
+    // this is the last payload beat of the entire stream
+    wire tlast_internal = last_payload && (remaining_length == 20'h0);
+    // I dunno if it ever makes sense to use the external tlast, maybe just check it and
+    // flag if it doesn't match.
     wire tlast = (USE_TLAST == "TRUE") ? s_data_tlast : tlast_internal;
 
     always @(posedge aclk) begin
@@ -127,8 +144,13 @@ module turf_fragment_gen(
                 HEADER: if (m_hdr_tvalid && m_hdr_tready) state <= TAG;
                 TAG: if (m_payload_tvalid && m_payload_tready) state <= STREAM;
                 STREAM: if (m_payload_tvalid && m_payload_tready) begin
-                    if (tlast) state <= IDLE;
-                    else if (fragment_beats == nfragment_count_i) state <= HEADER;
+                    if (last_payload) begin
+                        // this should probably only ever be tlast_internal otherwise
+                        // all hell breaks loose
+                        // we probably also need a timeout here or something
+                        if (tlast) state <= IDLE;
+                        else state <= HEADER;
+                    end
                 end
             endcase
         end
@@ -150,6 +172,19 @@ module turf_fragment_gen(
                 fragment_length <= {nfragment_count_i,3'b000} + 16;
             end
         end
+        
+        if (state == HEADER && m_hdr_tvalid && m_hdr_tready) begin
+            // This is the last fragment
+            if (current_length_remaining64 <= nfragment_count_i + 1) begin
+                max_fragment_beats <= (current_length_remaining64[0 +: 13]);
+            end else 
+            // This is a middle fragment
+            begin
+                max_fragment_beats <= nfragment_count_i + 1;
+            end
+        end
+        
+        
         // Calculate the remaining length
         if (state == IDLE && s_ctrl_tvalid && s_ctrl_tready)
            remaining_length <= s_ctrl_tdata[0 +: 20];
@@ -193,12 +228,14 @@ module turf_fragment_gen(
                                    .probe4(s_ctrl_tready),
                                    .probe5(s_data_tvalid),
                                    .probe6(s_data_tready),
-                                   .probe7(s_data_tlast),
+                                   .probe7(tlast),
                                    .probe8(m_hdr_tready),
                                    .probe9(m_hdr_tvalid),
                                    .probe10(m_payload_tready),
                                    .probe11(m_payload_tvalid),
-                                   .probe12(m_payload_tlast));
+                                   .probe12(m_payload_tlast),
+                                   .probe13(max_fragment_beats),
+                                   .probe14(fragment_beats));
         end
     endgenerate
     
@@ -209,6 +246,6 @@ module turf_fragment_gen(
     assign m_hdr_tdata = { event_ip, event_port, fragment_length };
     assign m_hdr_tuser = (BASE_PORT & ~fragsrc_mask_i) | (fragment_number & fragsrc_mask_i);
     assign m_payload_tdata = (state == TAG) ? tag : s_data_tdata;
-    assign m_payload_tlast = (state == STREAM && tlast);
+    assign m_payload_tlast = (state == STREAM && last_payload);
     assign m_payload_tkeep = (state == STREAM) ? s_data_tkeep : 8'hFF;
 endmodule
